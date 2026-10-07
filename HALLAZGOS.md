@@ -26,7 +26,7 @@
 
 **Ajuste recomendado:** jerarquía explícita en el prompt: *1) políticas y privacidad, 2) lo que pide el cliente, 3) el compromiso de pago*. Disparadores con acción obligatoria: pedido de humano, reclamo/disputa o "ya pagué" → `transferir_asesor` o `registrar_gestion` y cierre, sin volver a pedir fecha. Lista de expresiones prohibidas (jurídico, embargo, centrales de riesgo, reporte) con un filtro de salida que bloquee la respuesta antes de que se pronuncie.
 
-### 3. Compromete al banco con datos o acuerdos inválidos — 6 llamadas (30 %)
+### 3. Compromete al banco con datos o acuerdos inválidos — 5 llamadas (25 %)
 
 - **C05:** ofrece por iniciativa propia un **20 % de descuento**.
 - **C11 y C19:** informa un monto (2.620.000 en lugar de 2.260.000) y una fecha de vencimiento (21 en lugar de 12 de septiembre) que no coinciden con el sistema.
