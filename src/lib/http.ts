@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z, ZodError } from "zod";
+import { requireApiKey } from "@/lib/auth";
 import { HttpError, badRequest } from "@/lib/errors";
 import { ModelError } from "@/lib/llm/models";
 import { LanguageSchema, type Language } from "@/lib/schemas/report";
@@ -13,7 +14,10 @@ export function errorResponse(error: unknown): NextResponse<ErrorBody> {
   if (error instanceof HttpError) {
     return NextResponse.json(
       { error: error.message, ...(error.details ? { details: error.details } : {}) },
-      { status: error.status },
+      {
+        status: error.status,
+        headers: error.status === 401 ? { "WWW-Authenticate": 'Bearer realm="audibot"' } : {},
+      },
     );
   }
   if (error instanceof ZodError) {
@@ -31,10 +35,14 @@ export function errorResponse(error: unknown): NextResponse<ErrorBody> {
 
 type Handler<C> = (request: NextRequest, context: C) => Promise<Response>;
 
-/** Every route goes through this: known errors map to 4xx, anything else to a JSON 500. */
-export function route<C>(handler: Handler<C>): Handler<C> {
+/**
+ * Every route goes through this: the API key is checked first (unless the route is
+ * explicitly public), known errors map to 4xx, anything else to a JSON 500.
+ */
+export function route<C>(handler: Handler<C>, options: { public?: boolean } = {}): Handler<C> {
   return async (request, context) => {
     try {
+      if (!options.public) requireApiKey(request);
       return await handler(request, context);
     } catch (error) {
       return errorResponse(error);
