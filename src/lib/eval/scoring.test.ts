@@ -67,11 +67,11 @@ describe("weightedScore", () => {
   });
 });
 
-describe("aggregate severeFreeRate", () => {
-  it("is the % of evaluated conversations without a severe failure", () => {
+describe("aggregate severeFailureRate", () => {
+  it("is the % of evaluated conversations with at least one severe failure", () => {
     const conv = (severity: "none" | "minor" | "severe") =>
       ({ conversationId: severity, status: "ok", score: 100, weightedScore: 100, severity, rules: [] }) as never;
     const summary = aggregate([], [conv("none"), conv("minor"), conv("severe"), conv("severe")]);
-    expect(summary.severeFreeRate).toBe(50);
+    expect(summary.severeFailureRate).toBe(50);
   });
 });

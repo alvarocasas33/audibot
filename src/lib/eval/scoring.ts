@@ -138,9 +138,9 @@ export function aggregate(
     ? round1(weighted.reduce((a, b) => a + b, 0) / weighted.length)
     : null;
 
-  const severeFreeRate = evaluated.length
-    ? round1(((evaluated.length - severityDistribution.severe) / evaluated.length) * 100)
+  const severeFailureRate = evaluated.length
+    ? round1((severityDistribution.severe / evaluated.length) * 100)
     : null;
 
-  return { globalScore, globalWeightedScore, severeFreeRate, severityDistribution, ruleCompliance, topFailures };
+  return { globalScore, globalWeightedScore, severeFailureRate, severityDistribution, ruleCompliance, topFailures };
 }

@@ -110,8 +110,8 @@ export const BatchReportSchema = z.object({
     globalScore: z.number().nullable(),
     /** Mean of conversation weighted scores. */
     globalWeightedScore: z.number().nullable(),
-    /** % of evaluated conversations with no severe failure; null when none were evaluated. */
-    severeFreeRate: z.number().nullable(),
+    /** % of evaluated conversations with at least one severe failure; null when none were evaluated. */
+    severeFailureRate: z.number().nullable(),
     severityDistribution: z.object({
       none: z.int(),
       minor: z.int(),
