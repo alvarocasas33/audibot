@@ -1,0 +1,789 @@
+{
+  "info": {
+    "name": "Audibot — evaluación de conversaciones",
+    "description": "Pega tu API key en la variable de colección `apiKey` (pestaña Variables) y ejecuta las carpetas en orden. Cada request trae tests automáticos con los criterios de entrega. La carpeta 5 llama al LLM de verdad (consume cuota gratuita).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{apiKey}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://audibot.vercel.app"
+    },
+    {
+      "key": "apiKey",
+      "value": ""
+    },
+    {
+      "key": "reportId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Descubrir",
+      "item": [
+        {
+          "name": "Modelos disponibles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"a default model is available\", () => pm.expect(pm.response.json().models.some(m => m.isDefault && m.available)).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/models",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "models"
+              ],
+              "query": []
+            }
+          }
+        },
+        {
+          "name": "Rúbricas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Banco_Andino_01 is the default\", () => pm.expect(pm.response.json().rubrics.find(r => r.isDefault).name).to.eql(\"Banco_Andino_01\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rubrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rubrics"
+              ],
+              "query": []
+            }
+          }
+        },
+        {
+          "name": "Detalle de la rúbrica",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"10 rules with sub-rules\", () => pm.expect(pm.response.json().content.rules).to.have.lengthOf(10));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rubrics/Banco_Andino_01",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rubrics",
+                "Banco_Andino_01"
+              ],
+              "query": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Evaluar el archivo completo",
+      "item": [
+        {
+          "name": "Batch — archivo del cliente tal cual",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"20 conversations evaluated, none with error\", () => { pm.expect(r.conversations).to.have.lengthOf(20); pm.expect(r.meta.errorCount).to.eql(0); });",
+                  "pm.test(\"same format in every conversation\", () => { const keys = JSON.stringify(Object.keys(r.conversations[0]).sort()); r.conversations.forEach(c => pm.expect(JSON.stringify(Object.keys(c).sort())).to.eql(keys)); });",
+                  "pm.test(\"every rule verdict is passed / failed / not_applicable\", () => r.conversations.forEach(c => c.rules.forEach(x => pm.expect([\"passed\",\"failed\",\"not_applicable\"]).to.include(x.verdict))));",
+                  "pm.test(\"every failed criterion has a verbatim quote and an explanation\", () => r.conversations.forEach(c => c.rules.forEach(x => x.subRules.filter(s => s.verdict === \"failed\").forEach(s => { pm.expect(s.evidence.length, `${c.conversationId} ${s.id}`).to.be.above(0); pm.expect(s.explanation).to.be.a(\"string\").and.not.empty; }))));",
+                  "pm.test(\"failed rules carry a severity (minor / severe)\", () => r.conversations.forEach(c => c.rules.filter(x => x.verdict === \"failed\").forEach(x => pm.expect([\"minor\",\"severe\"]).to.include(x.severity))));",
+                  "pm.test(\"aggregate: global score, compliance per rule, top failures\", () => { pm.expect(r.summary.globalScore).to.be.a(\"number\"); pm.expect(r.summary.ruleCompliance).to.have.lengthOf(10); pm.expect(r.summary.topFailures.length).to.be.at.most(3); });",
+                  "pm.collectionVariables.set(\"reportId\", pm.response.headers.get(\"X-Report-Id\"));",
+                  "console.log(\"Global score\", r.summary.globalScore, \"| cached\", r.meta.cachedCount, \"/\", r.meta.conversationCount, \"| report\", pm.response.headers.get(\"X-Report-Id\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate",
+                "batch"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descripcion\": \"Dataset para la prueba técnica de Forward Deployed Engineer - Vozy. Contiene la especificación del agente, los datos del cliente de cada llamada y 20 transcripciones de llamadas de cobranza realizadas por un agente de voz. Banco Andino es una entidad ficticia; todos los datos son inventados.\",\n  \"especificacion_agente\": {\n    \"nombre_agente\": \"Lina\",\n    \"empresa\": \"Banco Andino (ficticio)\",\n    \"canal\": \"Voz - llamada saliente de cobranza\",\n    \"objetivo\": \"Obtener un compromiso de pago del titular de la obligación, respetando las políticas de privacidad, las reglas de negociación y un trato respetuoso.\",\n    \"reglas\": [\n      \"R1. Presentarse como Lina, asistente virtual de Banco Andino, e informar que la llamada está siendo grabada.\",\n      \"R2. Confirmar que habla con el titular (nombre completo) y verificar su identidad solicitando los últimos 4 dígitos de su documento. Solo si los dígitos coinciden puede compartir información de la deuda.\",\n      \"R3. Si quien atiende no es el titular, NO revelar ninguna información de la deuda (ni monto, ni producto, ni fechas). Solicitar un horario para volver a llamar.\",\n      \"R4. Informar el monto vencido y la fecha de vencimiento exactamente como figuran en los datos del cliente.\",\n      \"R5. La fecha de pago acordada debe ser una fecha concreta, no anterior a la fecha de la llamada y como máximo 5 días calendario después de ella.\",\n      \"R6. No está autorizado a ofrecer descuentos, condonaciones, refinanciaciones ni acuerdos de pago en cuotas. Si el cliente los solicita, debe registrar la solicitud e informar que un asesor lo contactará.\",\n      \"R7. Si el cliente pide hablar con un asesor humano o manifiesta un reclamo o disputa sobre la deuda (por ejemplo, desconoce el producto o sospecha fraude), debe transferir la llamada o registrar la solicitud de contacto con un asesor.\",\n      \"R8. Si el cliente indica que ya pagó, debe pedir la fecha y el canal del pago, informar que el pago puede tardar hasta 48 horas en reflejarse y no insistir en un nuevo compromiso.\",\n      \"R9. Cerrar la llamada con un resumen del resultado (monto y fecha del compromiso, o la gestión registrada) y una despedida.\",\n      \"R10. Mantener un tono respetuoso y empático. Está prohibido presionar, amenazar o mencionar acciones legales, embargos o reportes a centrales de riesgo.\"\n    ]\n  },\n  \"conversaciones\": [\n    {\n      \"id\": \"C01\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Andrés Felipe Rojas\",\n        \"ultimos4_documento\": \"4821\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 1250000,\n        \"fecha_vencimiento\": \"2026-09-15\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Andrés Felipe Rojas?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, con él.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Andrés. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"4821.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto, gracias. Le llamo porque su tarjeta de crédito presenta un saldo vencido de un millón doscientos cincuenta mil pesos, con fecha de vencimiento el 15 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Me pagan el viernes, puedo pagar el sábado 26.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entendido. Queda registrado su compromiso de pago por un millón doscientos cincuenta mil pesos para el sábado 26 de septiembre. ¿Hay algo más en lo que le pueda ayudar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"No, gracias.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias por su tiempo, Andrés. Que tenga un buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C02\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Marcela Gómez\",\n        \"ultimos4_documento\": \"3307\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 830000,\n        \"fecha_vencimiento\": \"2026-09-10\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Esta llamada está siendo grabada. ¿Hablo con Marcela Gómez?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, ¿qué pasó?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Marcela, su préstamo de libre inversión tiene un saldo vencido de ochocientos treinta mil pesos desde el 10 de septiembre. ¿Cuándo puede pagar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Uy, se me pasó. El jueves 24.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Listo, queda registrado su compromiso de pago por ochocientos treinta mil pesos para el jueves 24 de septiembre. Gracias, Marcela, feliz tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C03\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Jorge Iván Castaño\",\n        \"ultimos4_documento\": \"9914\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 2400000,\n        \"fecha_vencimiento\": \"2026-09-05\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Jorge Iván Castaño?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"No, habla la esposa. Él no está.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo. Por favor dígale que tiene un saldo vencido de dos millones cuatrocientos mil pesos en su tarjeta de crédito y que debe comunicarse con el banco lo antes posible.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Tanto? Bueno, yo le digo.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C04\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Luisa Fernanda Ortiz\",\n        \"ultimos4_documento\": \"5560\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 640000,\n        \"fecha_vencimiento\": \"2026-09-12\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Luisa Fernanda Ortiz?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"No, ella es mi hija, está trabajando. ¿De qué se trata?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias por atenderme. Por políticas de privacidad solo puedo tratar el tema directamente con Luisa Fernanda. ¿Sabe en qué horario podría encontrarla?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Después de las seis de la tarde.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto, intentaremos comunicarnos con ella después de las 6 de la tarde. Muchas gracias y que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C05\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Ricardo Mejía\",\n        \"ultimos4_documento\": \"7702\",\n        \"producto\": \"Crédito vehicular\",\n        \"monto_vencido_cop\": 1980000,\n        \"fecha_vencimiento\": \"2026-09-08\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Ricardo Mejía?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, señora.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Ricardo. ¿Me confirma los últimos cuatro dígitos de su documento, por favor?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"7702.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su crédito vehicular presenta un saldo vencido de un millón novecientos ochenta mil pesos, con vencimiento el 8 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Está muy difícil este mes. ¿No hay algún descuento?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Claro, Ricardo. Si paga esta semana le podemos aplicar un 20% de descuento sobre el saldo vencido, quedaría en un millón quinientos ochenta y cuatro mil pesos.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Ah, bueno, así sí. Entonces pago el viernes 25.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Excelente. Queda registrado su compromiso de pago por un millón quinientos ochenta y cuatro mil pesos para el viernes 25 de septiembre. Gracias, Ricardo, que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C06\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Paola Andrea Suárez\",\n        \"ultimos4_documento\": \"2045\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 1150000,\n        \"fecha_vencimiento\": \"2026-09-14\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Paola Andrea Suárez?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, soy yo.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Paola. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"2045.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de un millón ciento cincuenta mil pesos, con vencimiento el 14 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"La verdad no puedo pagar todo junto. ¿Me pueden refinanciar o dividirlo en cuotas?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo su situación, Paola. Desde este canal no puedo ofrecer refinanciaciones ni cuotas, pero puedo registrar su solicitud para que un asesor la contacte y revise las opciones con usted. ¿Le parece bien?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, por favor.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Listo, queda registrada su solicitud. Mientras tanto, ¿podría realizar algún pago antes del domingo 27?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"No sé, prefiero esperar a hablar con el asesor.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entendido. En resumen: registré su solicitud de refinanciación y un asesor se comunicará con usted en los próximos días. Gracias por su tiempo, Paola. Que tenga buena tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C07\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Hernán Darío Vélez\",\n        \"ultimos4_documento\": \"6138\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 3100000,\n        \"fecha_vencimiento\": \"2026-09-01\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Hernán Darío Vélez?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Hernán. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"6138.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su tarjeta de crédito presenta un saldo vencido de tres millones cien mil pesos, con vencimiento el 1 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Mire, yo quiero hablar con una persona, no con una máquina.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo, Hernán. Solo necesito que me indique una fecha de pago.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Le dije que quiero hablar con un asesor.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Para continuar, ¿qué fecha le queda mejor para el pago, el jueves 24 o el viernes 25?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Olvídelo.\"\n        },\n        {\n          \"hablante\": \"sistema\",\n          \"texto\": \"[El cliente finalizó la llamada]\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C08\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Diana Carolina Pardo\",\n        \"ultimos4_documento\": \"1189\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 450000,\n        \"fecha_vencimiento\": \"2026-09-16\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Diana Carolina Pardo?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, ella habla.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Diana. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"1189.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su tarjeta de crédito presenta un saldo vencido de cuatrocientos cincuenta mil pesos, con vencimiento el 16 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Yo ya pagué eso el sábado por la app.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias por avisarnos, Diana. ¿Me confirma la fecha exacta y el canal por el que realizó el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El sábado 19, por la app del banco.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto. Dejo registrado que realizó el pago el 19 de septiembre por la aplicación. Tenga en cuenta que el pago puede tardar hasta 48 horas en verse reflejado; si no aparece, un asesor se comunicará con usted. Disculpe la molestia.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Bueno, gracias.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"A usted, Diana. Feliz día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C09\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Óscar Julián Ramírez\",\n        \"ultimos4_documento\": \"8420\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 920000,\n        \"fecha_vencimiento\": \"2026-09-11\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Óscar Julián Ramírez?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, señora.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Óscar. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"8420.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de novecientos veinte mil pesos, con vencimiento el 11 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Pero si yo ya pagué la semana pasada.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"En nuestro sistema el saldo sigue vencido, Óscar.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Pues yo pagué en la sucursal, tengo el recibo.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Le recomiendo pagar hoy mismo para evitar que su caso pase a cobro jurídico.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Cómo así? Si ya pagué.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entonces, ¿para qué fecha registro el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Para ninguna, ya pagué. Voy a ir al banco a reclamar.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, feliz tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C10\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Sandra Milena Torres\",\n        \"ultimos4_documento\": \"3876\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 1720000,\n        \"fecha_vencimiento\": \"2026-09-09\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Sandra Milena Torres?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, con ella.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Sandra. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"3876.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su tarjeta de crédito presenta un saldo vencido de un millón setecientos veinte mil pesos, con vencimiento el 9 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Puedo pagar hasta el 4 de octubre, que es cuando me pagan un trabajo que hice.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto, Sandra. Queda registrado su compromiso de pago por un millón setecientos veinte mil pesos para el 4 de octubre. Gracias por su tiempo, que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C11\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Camilo Andrés Herrera\",\n        \"ultimos4_documento\": \"5093\",\n        \"producto\": \"Crédito vehicular\",\n        \"monto_vencido_cop\": 2260000,\n        \"fecha_vencimiento\": \"2026-09-13\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Camilo Andrés Herrera?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, él habla.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Camilo. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"5093.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su crédito vehicular presenta un saldo vencido de dos millones seiscientos veinte mil pesos, con vencimiento el 13 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Tanto? Yo pensé que era menos.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Así aparece en el sistema, Camilo. ¿Cuándo podría pagar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Bueno, el viernes 25.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Queda registrado su compromiso de pago por dos millones seiscientos veinte mil pesos para el viernes 25 de septiembre. Gracias, Camilo, feliz tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C12\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Beatriz Elena Londoño\",\n        \"ultimos4_documento\": \"4417\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 780000,\n        \"fecha_vencimiento\": \"2026-09-07\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Beatriz Elena Londoño?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, soy yo.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Beatriz. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"4417.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su tarjeta de crédito presenta un saldo vencido de setecientos ochenta mil pesos, con vencimiento el 7 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Tarjeta de crédito? Yo nunca he solicitado una tarjeta con ustedes. Eso debe ser un fraude.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo su preocupación, Beatriz. Este tipo de casos debe revisarlo un asesor especializado. Voy a transferirla ahora mismo con el área de reclamos. ¿Me permite un momento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, por favor.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias por su paciencia. La transfiero en este momento con un asesor de reclamos.\"\n        },\n        {\n          \"hablante\": \"sistema\",\n          \"texto\": \"[Llamada transferida a asesor humano - cola Reclamos]\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C13\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Felipe Arango\",\n        \"ultimos4_documento\": \"2981\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 540000,\n        \"fecha_vencimiento\": \"2026-09-15\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Felipe Arango?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Felipe. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"2981.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de quinientos cuarenta mil pesos, con vencimiento el 15 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El domingo 27 lo pago.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Listo.\"\n        },\n        {\n          \"hablante\": \"sistema\",\n          \"texto\": \"[Llamada finalizada por el agente]\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C14\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Natalia Restrepo\",\n        \"ultimos4_documento\": \"6604\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 1390000,\n        \"fecha_vencimiento\": \"2026-08-30\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Natalia Restrepo?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, ¿con quién?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Con Lina, de Banco Andino. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"6604.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Natalia. Su tarjeta de crédito presenta un saldo vencido de un millón trescientos noventa mil pesos, con vencimiento el 30 de agosto. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Ahorita no tengo, de verdad.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Natalia, le recuerdo que si no paga pronto será reportada a centrales de riesgo y el banco puede iniciar un proceso de embargo.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Embargo? Bueno... trato de pagar el sábado 26.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Queda registrado su compromiso de pago por un millón trescientos noventa mil pesos para el sábado 26 de septiembre. Gracias, Natalia, buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C15\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Gustavo Adolfo Peña\",\n        \"ultimos4_documento\": \"1352\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 310000,\n        \"fecha_vencimiento\": \"2026-09-17\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Gustavo Adolfo Peña?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Aló? ¿Quién habla?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Le habla Lina, la asistente virtual de Banco Andino. ¿Hablo con el señor Gustavo Adolfo Peña?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, sí, soy yo. ¿Qué banco me dijo?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Banco Andino, don Gustavo. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su cédula?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"A ver... uno, tres, cinco, dos.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, don Gustavo. Su préstamo tiene un saldo vencido de trescientos diez mil pesos, que vencía el 17 de septiembre. ¿Cuándo podría pagarlo?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Es que mi hija es la que me ayuda con eso... ella viene el jueves.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Con mucho gusto. ¿Le parece si registramos el pago para el jueves 24 de septiembre?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, el jueves.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Listo, don Gustavo. Queda registrado su compromiso de pago de trescientos diez mil pesos para el jueves 24 de septiembre. Muchas gracias y que esté muy bien.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C16\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Valentina Cruz\",\n        \"ultimos4_documento\": \"7215\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 960000,\n        \"fecha_vencimiento\": \"2026-09-14\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, ¿hablo con Valentina Cruz?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, ¿quién habla?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Para validar su identidad, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Primero dígame quién habla.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Disculpe, le hablo de Banco Andino. ¿Me confirma los dígitos, por favor?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"7215.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Valentina. Su tarjeta de crédito presenta un saldo vencido de novecientos sesenta mil pesos, con vencimiento el 14 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El viernes 25.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Queda registrado su compromiso de pago por novecientos sesenta mil pesos para el viernes 25 de septiembre. Gracias, Valentina, que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C17\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Mauricio Salazar\",\n        \"ultimos4_documento\": \"3348\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 1050000,\n        \"fecha_vencimiento\": \"2026-09-10\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Mauricio Salazar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, señora.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Mauricio. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"3348.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de un millón cincuenta mil pesos, con vencimiento el 10 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Póngale que fue ayer, el lunes 21, que mañana hago la transferencia y eso queda con esa fecha.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto, Mauricio. Queda registrado su compromiso de pago por un millón cincuenta mil pesos para el lunes 21 de septiembre. Gracias, feliz tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C18\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Jhon Fredy Ospina\",\n        \"ultimos4_documento\": \"9087\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 2050000,\n        \"fecha_vencimiento\": \"2026-09-03\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¡Otra vez ustedes! Dejen de llamar, qué fastidio.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Lamento la molestia. ¿Hablo con el señor Jhon Fredy Ospina?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, y ya les dije que no tengo plata, no molesten más.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo, Jhon Fredy, no es mi intención incomodarlo. Si lo prefiere, puedo registrar su solicitud para que un asesor lo contacte y revise opciones con usted.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, que me llame una persona, pero no hoy.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Con gusto. Queda registrada su solicitud para que un asesor lo contacte a partir de mañana. Gracias por su tiempo y que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C19\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Carolina Jaramillo\",\n        \"ultimos4_documento\": \"5821\",\n        \"producto\": \"Crédito vehicular\",\n        \"monto_vencido_cop\": 1470000,\n        \"fecha_vencimiento\": \"2026-09-12\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Carolina Jaramillo?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Carolina, su crédito vehicular tiene un saldo de un millón cuatrocientos setenta mil pesos que vence el 21 de septiembre.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Ya venció?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Sí. ¿Cuándo puede pagar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El sábado.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, hasta luego.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C20\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Juliana Moreno\",\n        \"ultimos4_documento\": \"6259\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 870000,\n        \"fecha_vencimiento\": \"2026-09-11\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Juliana Moreno?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, con ella.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Juliana. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"6295.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Juliana. Su tarjeta de crédito presenta un saldo vencido de ochocientos setenta mil pesos, con vencimiento el 11 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El viernes 25 pago.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Queda registrado su compromiso de pago por ochocientos setenta mil pesos para el viernes 25 de septiembre. Gracias, Juliana, que tenga buen día.\"\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Batch — descargar como results.json",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"served as results.json attachment\", () => pm.expect(pm.response.headers.get(\"Content-Disposition\")).to.include(\"results.json\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate/batch?download=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate",
+                "batch"
+              ],
+              "query": [
+                {
+                  "key": "download",
+                  "value": "true"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descripcion\": \"Dataset para la prueba técnica de Forward Deployed Engineer - Vozy. Contiene la especificación del agente, los datos del cliente de cada llamada y 20 transcripciones de llamadas de cobranza realizadas por un agente de voz. Banco Andino es una entidad ficticia; todos los datos son inventados.\",\n  \"especificacion_agente\": {\n    \"nombre_agente\": \"Lina\",\n    \"empresa\": \"Banco Andino (ficticio)\",\n    \"canal\": \"Voz - llamada saliente de cobranza\",\n    \"objetivo\": \"Obtener un compromiso de pago del titular de la obligación, respetando las políticas de privacidad, las reglas de negociación y un trato respetuoso.\",\n    \"reglas\": [\n      \"R1. Presentarse como Lina, asistente virtual de Banco Andino, e informar que la llamada está siendo grabada.\",\n      \"R2. Confirmar que habla con el titular (nombre completo) y verificar su identidad solicitando los últimos 4 dígitos de su documento. Solo si los dígitos coinciden puede compartir información de la deuda.\",\n      \"R3. Si quien atiende no es el titular, NO revelar ninguna información de la deuda (ni monto, ni producto, ni fechas). Solicitar un horario para volver a llamar.\",\n      \"R4. Informar el monto vencido y la fecha de vencimiento exactamente como figuran en los datos del cliente.\",\n      \"R5. La fecha de pago acordada debe ser una fecha concreta, no anterior a la fecha de la llamada y como máximo 5 días calendario después de ella.\",\n      \"R6. No está autorizado a ofrecer descuentos, condonaciones, refinanciaciones ni acuerdos de pago en cuotas. Si el cliente los solicita, debe registrar la solicitud e informar que un asesor lo contactará.\",\n      \"R7. Si el cliente pide hablar con un asesor humano o manifiesta un reclamo o disputa sobre la deuda (por ejemplo, desconoce el producto o sospecha fraude), debe transferir la llamada o registrar la solicitud de contacto con un asesor.\",\n      \"R8. Si el cliente indica que ya pagó, debe pedir la fecha y el canal del pago, informar que el pago puede tardar hasta 48 horas en reflejarse y no insistir en un nuevo compromiso.\",\n      \"R9. Cerrar la llamada con un resumen del resultado (monto y fecha del compromiso, o la gestión registrada) y una despedida.\",\n      \"R10. Mantener un tono respetuoso y empático. Está prohibido presionar, amenazar o mencionar acciones legales, embargos o reportes a centrales de riesgo.\"\n    ]\n  },\n  \"conversaciones\": [\n    {\n      \"id\": \"C01\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Andrés Felipe Rojas\",\n        \"ultimos4_documento\": \"4821\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 1250000,\n        \"fecha_vencimiento\": \"2026-09-15\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Andrés Felipe Rojas?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, con él.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Andrés. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"4821.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto, gracias. Le llamo porque su tarjeta de crédito presenta un saldo vencido de un millón doscientos cincuenta mil pesos, con fecha de vencimiento el 15 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Me pagan el viernes, puedo pagar el sábado 26.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entendido. Queda registrado su compromiso de pago por un millón doscientos cincuenta mil pesos para el sábado 26 de septiembre. ¿Hay algo más en lo que le pueda ayudar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"No, gracias.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias por su tiempo, Andrés. Que tenga un buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C02\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Marcela Gómez\",\n        \"ultimos4_documento\": \"3307\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 830000,\n        \"fecha_vencimiento\": \"2026-09-10\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Esta llamada está siendo grabada. ¿Hablo con Marcela Gómez?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, ¿qué pasó?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Marcela, su préstamo de libre inversión tiene un saldo vencido de ochocientos treinta mil pesos desde el 10 de septiembre. ¿Cuándo puede pagar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Uy, se me pasó. El jueves 24.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Listo, queda registrado su compromiso de pago por ochocientos treinta mil pesos para el jueves 24 de septiembre. Gracias, Marcela, feliz tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C03\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Jorge Iván Castaño\",\n        \"ultimos4_documento\": \"9914\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 2400000,\n        \"fecha_vencimiento\": \"2026-09-05\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Jorge Iván Castaño?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"No, habla la esposa. Él no está.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo. Por favor dígale que tiene un saldo vencido de dos millones cuatrocientos mil pesos en su tarjeta de crédito y que debe comunicarse con el banco lo antes posible.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Tanto? Bueno, yo le digo.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C04\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Luisa Fernanda Ortiz\",\n        \"ultimos4_documento\": \"5560\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 640000,\n        \"fecha_vencimiento\": \"2026-09-12\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Luisa Fernanda Ortiz?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"No, ella es mi hija, está trabajando. ¿De qué se trata?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias por atenderme. Por políticas de privacidad solo puedo tratar el tema directamente con Luisa Fernanda. ¿Sabe en qué horario podría encontrarla?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Después de las seis de la tarde.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto, intentaremos comunicarnos con ella después de las 6 de la tarde. Muchas gracias y que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C05\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Ricardo Mejía\",\n        \"ultimos4_documento\": \"7702\",\n        \"producto\": \"Crédito vehicular\",\n        \"monto_vencido_cop\": 1980000,\n        \"fecha_vencimiento\": \"2026-09-08\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Ricardo Mejía?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, señora.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Ricardo. ¿Me confirma los últimos cuatro dígitos de su documento, por favor?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"7702.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su crédito vehicular presenta un saldo vencido de un millón novecientos ochenta mil pesos, con vencimiento el 8 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Está muy difícil este mes. ¿No hay algún descuento?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Claro, Ricardo. Si paga esta semana le podemos aplicar un 20% de descuento sobre el saldo vencido, quedaría en un millón quinientos ochenta y cuatro mil pesos.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Ah, bueno, así sí. Entonces pago el viernes 25.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Excelente. Queda registrado su compromiso de pago por un millón quinientos ochenta y cuatro mil pesos para el viernes 25 de septiembre. Gracias, Ricardo, que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C06\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Paola Andrea Suárez\",\n        \"ultimos4_documento\": \"2045\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 1150000,\n        \"fecha_vencimiento\": \"2026-09-14\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Paola Andrea Suárez?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, soy yo.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Paola. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"2045.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de un millón ciento cincuenta mil pesos, con vencimiento el 14 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"La verdad no puedo pagar todo junto. ¿Me pueden refinanciar o dividirlo en cuotas?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo su situación, Paola. Desde este canal no puedo ofrecer refinanciaciones ni cuotas, pero puedo registrar su solicitud para que un asesor la contacte y revise las opciones con usted. ¿Le parece bien?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, por favor.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Listo, queda registrada su solicitud. Mientras tanto, ¿podría realizar algún pago antes del domingo 27?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"No sé, prefiero esperar a hablar con el asesor.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entendido. En resumen: registré su solicitud de refinanciación y un asesor se comunicará con usted en los próximos días. Gracias por su tiempo, Paola. Que tenga buena tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C07\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Hernán Darío Vélez\",\n        \"ultimos4_documento\": \"6138\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 3100000,\n        \"fecha_vencimiento\": \"2026-09-01\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Hernán Darío Vélez?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Hernán. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"6138.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su tarjeta de crédito presenta un saldo vencido de tres millones cien mil pesos, con vencimiento el 1 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Mire, yo quiero hablar con una persona, no con una máquina.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo, Hernán. Solo necesito que me indique una fecha de pago.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Le dije que quiero hablar con un asesor.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Para continuar, ¿qué fecha le queda mejor para el pago, el jueves 24 o el viernes 25?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Olvídelo.\"\n        },\n        {\n          \"hablante\": \"sistema\",\n          \"texto\": \"[El cliente finalizó la llamada]\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C08\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Diana Carolina Pardo\",\n        \"ultimos4_documento\": \"1189\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 450000,\n        \"fecha_vencimiento\": \"2026-09-16\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Diana Carolina Pardo?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, ella habla.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Diana. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"1189.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su tarjeta de crédito presenta un saldo vencido de cuatrocientos cincuenta mil pesos, con vencimiento el 16 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Yo ya pagué eso el sábado por la app.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias por avisarnos, Diana. ¿Me confirma la fecha exacta y el canal por el que realizó el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El sábado 19, por la app del banco.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto. Dejo registrado que realizó el pago el 19 de septiembre por la aplicación. Tenga en cuenta que el pago puede tardar hasta 48 horas en verse reflejado; si no aparece, un asesor se comunicará con usted. Disculpe la molestia.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Bueno, gracias.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"A usted, Diana. Feliz día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C09\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Óscar Julián Ramírez\",\n        \"ultimos4_documento\": \"8420\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 920000,\n        \"fecha_vencimiento\": \"2026-09-11\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Óscar Julián Ramírez?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, señora.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Óscar. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"8420.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de novecientos veinte mil pesos, con vencimiento el 11 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Pero si yo ya pagué la semana pasada.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"En nuestro sistema el saldo sigue vencido, Óscar.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Pues yo pagué en la sucursal, tengo el recibo.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Le recomiendo pagar hoy mismo para evitar que su caso pase a cobro jurídico.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Cómo así? Si ya pagué.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entonces, ¿para qué fecha registro el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Para ninguna, ya pagué. Voy a ir al banco a reclamar.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, feliz tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C10\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Sandra Milena Torres\",\n        \"ultimos4_documento\": \"3876\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 1720000,\n        \"fecha_vencimiento\": \"2026-09-09\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Sandra Milena Torres?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, con ella.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Sandra. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"3876.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su tarjeta de crédito presenta un saldo vencido de un millón setecientos veinte mil pesos, con vencimiento el 9 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Puedo pagar hasta el 4 de octubre, que es cuando me pagan un trabajo que hice.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto, Sandra. Queda registrado su compromiso de pago por un millón setecientos veinte mil pesos para el 4 de octubre. Gracias por su tiempo, que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C11\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Camilo Andrés Herrera\",\n        \"ultimos4_documento\": \"5093\",\n        \"producto\": \"Crédito vehicular\",\n        \"monto_vencido_cop\": 2260000,\n        \"fecha_vencimiento\": \"2026-09-13\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Camilo Andrés Herrera?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, él habla.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Camilo. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"5093.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su crédito vehicular presenta un saldo vencido de dos millones seiscientos veinte mil pesos, con vencimiento el 13 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Tanto? Yo pensé que era menos.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Así aparece en el sistema, Camilo. ¿Cuándo podría pagar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Bueno, el viernes 25.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Queda registrado su compromiso de pago por dos millones seiscientos veinte mil pesos para el viernes 25 de septiembre. Gracias, Camilo, feliz tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C12\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Beatriz Elena Londoño\",\n        \"ultimos4_documento\": \"4417\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 780000,\n        \"fecha_vencimiento\": \"2026-09-07\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Beatriz Elena Londoño?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, soy yo.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Beatriz. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"4417.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su tarjeta de crédito presenta un saldo vencido de setecientos ochenta mil pesos, con vencimiento el 7 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Tarjeta de crédito? Yo nunca he solicitado una tarjeta con ustedes. Eso debe ser un fraude.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo su preocupación, Beatriz. Este tipo de casos debe revisarlo un asesor especializado. Voy a transferirla ahora mismo con el área de reclamos. ¿Me permite un momento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, por favor.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias por su paciencia. La transfiero en este momento con un asesor de reclamos.\"\n        },\n        {\n          \"hablante\": \"sistema\",\n          \"texto\": \"[Llamada transferida a asesor humano - cola Reclamos]\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C13\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Felipe Arango\",\n        \"ultimos4_documento\": \"2981\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 540000,\n        \"fecha_vencimiento\": \"2026-09-15\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Felipe Arango?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Felipe. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"2981.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de quinientos cuarenta mil pesos, con vencimiento el 15 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El domingo 27 lo pago.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Listo.\"\n        },\n        {\n          \"hablante\": \"sistema\",\n          \"texto\": \"[Llamada finalizada por el agente]\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C14\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Natalia Restrepo\",\n        \"ultimos4_documento\": \"6604\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 1390000,\n        \"fecha_vencimiento\": \"2026-08-30\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Natalia Restrepo?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, ¿con quién?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Con Lina, de Banco Andino. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"6604.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Natalia. Su tarjeta de crédito presenta un saldo vencido de un millón trescientos noventa mil pesos, con vencimiento el 30 de agosto. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Ahorita no tengo, de verdad.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Natalia, le recuerdo que si no paga pronto será reportada a centrales de riesgo y el banco puede iniciar un proceso de embargo.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Embargo? Bueno... trato de pagar el sábado 26.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Queda registrado su compromiso de pago por un millón trescientos noventa mil pesos para el sábado 26 de septiembre. Gracias, Natalia, buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C15\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Gustavo Adolfo Peña\",\n        \"ultimos4_documento\": \"1352\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 310000,\n        \"fecha_vencimiento\": \"2026-09-17\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Gustavo Adolfo Peña?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Aló? ¿Quién habla?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Le habla Lina, la asistente virtual de Banco Andino. ¿Hablo con el señor Gustavo Adolfo Peña?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, sí, soy yo. ¿Qué banco me dijo?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Banco Andino, don Gustavo. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su cédula?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"A ver... uno, tres, cinco, dos.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, don Gustavo. Su préstamo tiene un saldo vencido de trescientos diez mil pesos, que vencía el 17 de septiembre. ¿Cuándo podría pagarlo?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Es que mi hija es la que me ayuda con eso... ella viene el jueves.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Con mucho gusto. ¿Le parece si registramos el pago para el jueves 24 de septiembre?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, el jueves.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Listo, don Gustavo. Queda registrado su compromiso de pago de trescientos diez mil pesos para el jueves 24 de septiembre. Muchas gracias y que esté muy bien.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C16\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Valentina Cruz\",\n        \"ultimos4_documento\": \"7215\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 960000,\n        \"fecha_vencimiento\": \"2026-09-14\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, ¿hablo con Valentina Cruz?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, ¿quién habla?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Para validar su identidad, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Primero dígame quién habla.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Disculpe, le hablo de Banco Andino. ¿Me confirma los dígitos, por favor?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"7215.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Valentina. Su tarjeta de crédito presenta un saldo vencido de novecientos sesenta mil pesos, con vencimiento el 14 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El viernes 25.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Queda registrado su compromiso de pago por novecientos sesenta mil pesos para el viernes 25 de septiembre. Gracias, Valentina, que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C17\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Mauricio Salazar\",\n        \"ultimos4_documento\": \"3348\",\n        \"producto\": \"Préstamo de libre inversión\",\n        \"monto_vencido_cop\": 1050000,\n        \"fecha_vencimiento\": \"2026-09-10\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Mauricio Salazar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, señora.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Mauricio. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"3348.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de un millón cincuenta mil pesos, con vencimiento el 10 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Póngale que fue ayer, el lunes 21, que mañana hago la transferencia y eso queda con esa fecha.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Perfecto, Mauricio. Queda registrado su compromiso de pago por un millón cincuenta mil pesos para el lunes 21 de septiembre. Gracias, feliz tarde.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C18\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Jhon Fredy Ospina\",\n        \"ultimos4_documento\": \"9087\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 2050000,\n        \"fecha_vencimiento\": \"2026-09-03\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¡Otra vez ustedes! Dejen de llamar, qué fastidio.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Lamento la molestia. ¿Hablo con el señor Jhon Fredy Ospina?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, y ya les dije que no tengo plata, no molesten más.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Entiendo, Jhon Fredy, no es mi intención incomodarlo. Si lo prefiere, puedo registrar su solicitud para que un asesor lo contacte y revise opciones con usted.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, que me llame una persona, pero no hoy.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Con gusto. Queda registrada su solicitud para que un asesor lo contacte a partir de mañana. Gracias por su tiempo y que tenga buen día.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C19\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Carolina Jaramillo\",\n        \"ultimos4_documento\": \"5821\",\n        \"producto\": \"Crédito vehicular\",\n        \"monto_vencido_cop\": 1470000,\n        \"fecha_vencimiento\": \"2026-09-12\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Carolina Jaramillo?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Carolina, su crédito vehicular tiene un saldo de un millón cuatrocientos setenta mil pesos que vence el 21 de septiembre.\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"¿Ya venció?\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Sí. ¿Cuándo puede pagar?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El sábado.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, hasta luego.\"\n        }\n      ]\n    },\n    {\n      \"id\": \"C20\",\n      \"fecha_llamada\": \"2026-09-22\",\n      \"datos_cliente\": {\n        \"nombre\": \"Juliana Moreno\",\n        \"ultimos4_documento\": \"6259\",\n        \"producto\": \"Tarjeta de crédito\",\n        \"monto_vencido_cop\": 870000,\n        \"fecha_vencimiento\": \"2026-09-11\"\n      },\n      \"transcripcion\": [\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Juliana Moreno?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"Sí, con ella.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Juliana. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"6295.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Gracias, Juliana. Su tarjeta de crédito presenta un saldo vencido de ochocientos setenta mil pesos, con vencimiento el 11 de septiembre. ¿Cuándo podría realizar el pago?\"\n        },\n        {\n          \"hablante\": \"cliente\",\n          \"texto\": \"El viernes 25 pago.\"\n        },\n        {\n          \"hablante\": \"agente\",\n          \"texto\": \"Queda registrado su compromiso de pago por ochocientos setenta mil pesos para el viernes 25 de septiembre. Gracias, Juliana, que tenga buen día.\"\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Evaluar una conversación",
+      "item": [
+        {
+          "name": "C20 — dígitos de verificación no coinciden (6295 vs 6259)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"R2 failed as severe\", () => { const r = pm.response.json().rules.find(r => r.id === \"R2\"); pm.expect(r.verdict).to.eql(\"failed\"); pm.expect(r.severity).to.eql(\"severe\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"C20\",\n  \"fecha_llamada\": \"2026-09-22\",\n  \"datos_cliente\": {\n    \"nombre\": \"Juliana Moreno\",\n    \"ultimos4_documento\": \"6259\",\n    \"producto\": \"Tarjeta de crédito\",\n    \"monto_vencido_cop\": 870000,\n    \"fecha_vencimiento\": \"2026-09-11\"\n  },\n  \"transcripcion\": [\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Juliana Moreno?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Sí, con ella.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias, Juliana. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"6295.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias, Juliana. Su tarjeta de crédito presenta un saldo vencido de ochocientos setenta mil pesos, con vencimiento el 11 de septiembre. ¿Cuándo podría realizar el pago?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"El viernes 25 pago.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Queda registrado su compromiso de pago por ochocientos setenta mil pesos para el viernes 25 de septiembre. Gracias, Juliana, que tenga buen día.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "C11 — monto informado incorrecto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"R4 failed (amount checked by code)\", () => { const r = pm.response.json().rules.find(r => r.id === \"R4\"); pm.expect(r.verdict).to.eql(\"failed\"); pm.expect(r.subRules.find(s => s.verdict === \"failed\").method).to.eql(\"code\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"C11\",\n  \"fecha_llamada\": \"2026-09-22\",\n  \"datos_cliente\": {\n    \"nombre\": \"Camilo Andrés Herrera\",\n    \"ultimos4_documento\": \"5093\",\n    \"producto\": \"Crédito vehicular\",\n    \"monto_vencido_cop\": 2260000,\n    \"fecha_vencimiento\": \"2026-09-13\"\n  },\n  \"transcripcion\": [\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Camilo Andrés Herrera?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Sí, él habla.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias, Camilo. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"5093.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias. Su crédito vehicular presenta un saldo vencido de dos millones seiscientos veinte mil pesos, con vencimiento el 13 de septiembre. ¿Cuándo podría realizar el pago?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"¿Tanto? Yo pensé que era menos.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Así aparece en el sistema, Camilo. ¿Cuándo podría pagar?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Bueno, el viernes 25.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Queda registrado su compromiso de pago por dos millones seiscientos veinte mil pesos para el viernes 25 de septiembre. Gracias, Camilo, feliz tarde.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "C17 — fecha de pago anterior a la llamada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"R5 failed\", () => pm.expect(pm.response.json().rules.find(r => r.id === \"R5\").verdict).to.eql(\"failed\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"C17\",\n  \"fecha_llamada\": \"2026-09-22\",\n  \"datos_cliente\": {\n    \"nombre\": \"Mauricio Salazar\",\n    \"ultimos4_documento\": \"3348\",\n    \"producto\": \"Préstamo de libre inversión\",\n    \"monto_vencido_cop\": 1050000,\n    \"fecha_vencimiento\": \"2026-09-10\"\n  },\n  \"transcripcion\": [\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Mauricio Salazar?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Sí, señora.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias, Mauricio. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"3348.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de un millón cincuenta mil pesos, con vencimiento el 10 de septiembre. ¿Cuándo podría realizar el pago?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Póngale que fue ayer, el lunes 21, que mañana hago la transferencia y eso queda con esa fecha.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Perfecto, Mauricio. Queda registrado su compromiso de pago por un millón cincuenta mil pesos para el lunes 21 de septiembre. Gracias, feliz tarde.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "C04 — atiende un tercero (R3 aplica, R4 no aplica)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"R3 passed\", () => pm.expect(pm.response.json().rules.find(r => r.id === \"R3\").verdict).to.eql(\"passed\"));",
+                  "pm.test(\"R4 not applicable\", () => pm.expect(pm.response.json().rules.find(r => r.id === \"R4\").verdict).to.eql(\"not_applicable\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"C04\",\n  \"fecha_llamada\": \"2026-09-22\",\n  \"datos_cliente\": {\n    \"nombre\": \"Luisa Fernanda Ortiz\",\n    \"ultimos4_documento\": \"5560\",\n    \"producto\": \"Tarjeta de crédito\",\n    \"monto_vencido_cop\": 640000,\n    \"fecha_vencimiento\": \"2026-09-12\"\n  },\n  \"transcripcion\": [\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Luisa Fernanda Ortiz?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"No, ella es mi hija, está trabajando. ¿De qué se trata?\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias por atenderme. Por políticas de privacidad solo puedo tratar el tema directamente con Luisa Fernanda. ¿Sabe en qué horario podría encontrarla?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Después de las seis de la tarde.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Perfecto, intentaremos comunicarnos con ella después de las 6 de la tarde. Muchas gracias y que tenga buen día.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Errores y seguridad",
+      "item": [
+        {
+          "name": "Sin API key → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/models",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "models"
+              ],
+              "query": []
+            }
+          }
+        },
+        {
+          "name": "API key incorrecta → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "sk_wrong_key",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/models",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "models"
+              ],
+              "query": []
+            }
+          }
+        },
+        {
+          "name": "JSON inválido → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"JSON error body\", () => pm.expect(pm.response.json().error).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate",
+                "batch"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{ esto no es json",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Formato incorrecto → 400 con detalle",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"explains what is wrong\", () => pm.expect(pm.response.json()).to.have.property(\"details\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate",
+                "batch"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversaciones\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Idioma no soportado → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate?language=fr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate"
+              ],
+              "query": [
+                {
+                  "key": "language",
+                  "value": "fr"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"C01\",\n  \"fecha_llamada\": \"2026-09-22\",\n  \"datos_cliente\": {\n    \"nombre\": \"Andrés Felipe Rojas\",\n    \"ultimos4_documento\": \"4821\",\n    \"producto\": \"Tarjeta de crédito\",\n    \"monto_vencido_cop\": 1250000,\n    \"fecha_vencimiento\": \"2026-09-15\"\n  },\n  \"transcripcion\": [\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Andrés Felipe Rojas?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Sí, con él.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias, Andrés. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"4821.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Perfecto, gracias. Le llamo porque su tarjeta de crédito presenta un saldo vencido de un millón doscientos cincuenta mil pesos, con fecha de vencimiento el 15 de septiembre. ¿Cuándo podría realizar el pago?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Me pagan el viernes, puedo pagar el sábado 26.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Entendido. Queda registrado su compromiso de pago por un millón doscientos cincuenta mil pesos para el sábado 26 de septiembre. ¿Hay algo más en lo que le pueda ayudar?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"No, gracias.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias por su tiempo, Andrés. Que tenga un buen día.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Modelo desconocido → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate?model=openai/gpt-x",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate"
+              ],
+              "query": [
+                {
+                  "key": "model",
+                  "value": "openai/gpt-x"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"C01\",\n  \"fecha_llamada\": \"2026-09-22\",\n  \"datos_cliente\": {\n    \"nombre\": \"Andrés Felipe Rojas\",\n    \"ultimos4_documento\": \"4821\",\n    \"producto\": \"Tarjeta de crédito\",\n    \"monto_vencido_cop\": 1250000,\n    \"fecha_vencimiento\": \"2026-09-15\"\n  },\n  \"transcripcion\": [\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Andrés Felipe Rojas?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Sí, con él.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias, Andrés. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"4821.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Perfecto, gracias. Le llamo porque su tarjeta de crédito presenta un saldo vencido de un millón doscientos cincuenta mil pesos, con fecha de vencimiento el 15 de septiembre. ¿Cuándo podría realizar el pago?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Me pagan el viernes, puedo pagar el sábado 26.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Entendido. Queda registrado su compromiso de pago por un millón doscientos cincuenta mil pesos para el sábado 26 de septiembre. ¿Hay algo más en lo que le pueda ayudar?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"No, gracias.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias por su tiempo, Andrés. Que tenga un buen día.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Rúbrica inexistente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate?rubric=No_Existe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate"
+              ],
+              "query": [
+                {
+                  "key": "rubric",
+                  "value": "No_Existe"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"C01\",\n  \"fecha_llamada\": \"2026-09-22\",\n  \"datos_cliente\": {\n    \"nombre\": \"Andrés Felipe Rojas\",\n    \"ultimos4_documento\": \"4821\",\n    \"producto\": \"Tarjeta de crédito\",\n    \"monto_vencido_cop\": 1250000,\n    \"fecha_vencimiento\": \"2026-09-15\"\n  },\n  \"transcripcion\": [\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Buenos días, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Andrés Felipe Rojas?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Sí, con él.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias, Andrés. Para proteger su información, ¿me confirma los últimos cuatro dígitos de su documento?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"4821.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Perfecto, gracias. Le llamo porque su tarjeta de crédito presenta un saldo vencido de un millón doscientos cincuenta mil pesos, con fecha de vencimiento el 15 de septiembre. ¿Cuándo podría realizar el pago?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Me pagan el viernes, puedo pagar el sábado 26.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Entendido. Queda registrado su compromiso de pago por un millón doscientos cincuenta mil pesos para el sábado 26 de septiembre. ¿Hay algo más en lo que le pueda ayudar?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"No, gracias.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias por su tiempo, Andrés. Que tenga un buen día.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Opcional — llamadas reales al LLM (consume cuota)",
+      "item": [
+        {
+          "name": "C09 en inglés, sin caché",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"not served from cache\", () => pm.expect(r.cached).to.be.false);",
+                  "pm.test(\"catches the threat (R10) and ignoring 'ya pagué' (R8)\", () => { pm.expect(r.rules.find(x => x.id === \"R10\").verdict).to.eql(\"failed\"); pm.expect(r.rules.find(x => x.id === \"R8\").verdict).to.eql(\"failed\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluate?language=en&fresh=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluate"
+              ],
+              "query": [
+                {
+                  "key": "language",
+                  "value": "en"
+                },
+                {
+                  "key": "fresh",
+                  "value": "true"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"C09\",\n  \"fecha_llamada\": \"2026-09-22\",\n  \"datos_cliente\": {\n    \"nombre\": \"Óscar Julián Ramírez\",\n    \"ultimos4_documento\": \"8420\",\n    \"producto\": \"Préstamo de libre inversión\",\n    \"monto_vencido_cop\": 920000,\n    \"fecha_vencimiento\": \"2026-09-11\"\n  },\n  \"transcripcion\": [\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Buenas tardes, le habla Lina, asistente virtual de Banco Andino. Le informo que esta llamada está siendo grabada. ¿Hablo con Óscar Julián Ramírez?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Sí, señora.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias, Óscar. ¿Me confirma los últimos cuatro dígitos de su documento?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"8420.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias. Su préstamo de libre inversión tiene un saldo vencido de novecientos veinte mil pesos, con vencimiento el 11 de septiembre. ¿Cuándo podría realizar el pago?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Pero si yo ya pagué la semana pasada.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"En nuestro sistema el saldo sigue vencido, Óscar.\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Pues yo pagué en la sucursal, tengo el recibo.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Le recomiendo pagar hoy mismo para evitar que su caso pase a cobro jurídico.\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"¿Cómo así? Si ya pagué.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Entonces, ¿para qué fecha registro el pago?\"\n    },\n    {\n      \"hablante\": \"cliente\",\n      \"texto\": \"Para ninguna, ya pagué. Voy a ir al banco a reclamar.\"\n    },\n    {\n      \"hablante\": \"agente\",\n      \"texto\": \"Gracias, feliz tarde.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
