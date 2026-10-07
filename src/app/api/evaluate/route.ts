@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRubric } from "@/lib/db/rubrics";
+import { getSettings } from "@/lib/db/settings";
 import { evaluateConversation } from "@/lib/eval/evaluate";
 import { parseBody, readEvaluationParams, readJsonBody, route } from "@/lib/http";
 import { resolveModel } from "@/lib/llm/models";
@@ -12,7 +13,7 @@ export const POST = route(async (request) => {
   const params = readEvaluationParams(request);
   const { id: modelId, model } = resolveModel(params.model);
   const conversation = parseBody(ConversationSchema, await readJsonBody(request));
-  const rubric = await getRubric(params.rubric);
+  const [rubric, settings] = await Promise.all([getRubric(params.rubric), getSettings()]);
 
   const report = await evaluateConversation(conversation, {
     model,
@@ -21,6 +22,7 @@ export const POST = route(async (request) => {
     rubric: rubric.content,
     language: params.language,
     fresh: params.fresh,
+    evidence: settings.evidence,
   });
   return NextResponse.json({ rubric: rubric.name, language: params.language, ...report });
 });

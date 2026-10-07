@@ -27,7 +27,8 @@ async function main() {
 
   const { id: modelId, model } = resolveModel(arg("model"));
   const rubric = await getRubric(arg("rubric"));
-  const perRequest = Number(arg("per-request") ?? (await getSettings()).conversationsPerRequest);
+  const settings = await getSettings();
+  const perRequest = Number(arg("per-request") ?? settings.conversationsPerRequest);
   const report = await evaluateBatch(
     conversations,
     {
@@ -37,6 +38,7 @@ async function main() {
       rubric: rubric.content,
       language: (arg("language") ?? "es") as Language,
       fresh: process.argv.includes("--fresh"),
+      evidence: settings.evidence,
     },
     perRequest,
   );

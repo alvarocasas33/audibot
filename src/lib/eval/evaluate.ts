@@ -11,6 +11,7 @@ import type {
   SubRuleResult,
 } from "@/lib/schemas/report";
 import type { RubricContent, SubRule } from "@/lib/schemas/rubric";
+import type { EvidencePolicy } from "@/lib/schemas/settings";
 import { runCodeCheck } from "./code-checks";
 import { aggregate, buildRuleResult, scoreConversation } from "./scoring";
 
@@ -22,6 +23,23 @@ export interface EvaluationContext {
   language: Language;
   /** Skip the cache lookup and re-run the LLM (the new result is still cached). */
   fresh?: boolean;
+  /** Which sub-rules keep their transcript quotes in the output (default: all). */
+  evidence?: EvidencePolicy;
+}
+
+/**
+ * Applied on output, after the cache: cached reports keep full evidence, so changing
+ * the setting never requires re-evaluating.
+ */
+export function applyEvidencePolicy(report: ConversationReport, policy: EvidencePolicy = "all"): ConversationReport {
+  if (policy === "all") return report;
+  return {
+    ...report,
+    rules: report.rules.map((rule) => ({
+      ...rule,
+      subRules: rule.subRules.map((sub) => (sub.verdict === "failed" ? sub : { ...sub, evidence: [] })),
+    })),
+  };
 }
 
 /** Quotes come from the transcript by turn number, so evidence can never be invented. */
@@ -220,7 +238,7 @@ export async function evaluateConversations(
       }),
     );
   });
-  return reports;
+  return reports.map((report) => applyEvidencePolicy(report, ctx.evidence));
 }
 
 export async function evaluateConversation(

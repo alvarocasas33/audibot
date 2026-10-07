@@ -38,7 +38,7 @@ curl -X POST "https://audibot.vercel.app/api/evaluate/batch" \
 | `GET /api/models` | Modelos disponibles |
 | `GET/POST /api/rubrics`, `GET/PUT/DELETE /api/rubrics/{name}` | Gestión de rúbricas |
 | `POST /api/rubrics/generate` | Propone una rúbrica a partir de un archivo (no la guarda) |
-| `GET/PATCH /api/settings` | Configuración (conversaciones por solicitud al LLM) |
+| `GET/PATCH /api/settings` | Configuración: conversaciones por solicitud al LLM y citas en todos los criterios o solo en los que no cumplen |
 
 Parámetros de evaluación (query): `rubric` (por defecto la predeterminada), `model` (por defecto `google/gemini-3.5-flash-lite`), `language` (`es` | `en`, por defecto `es`) y `fresh=true` para ignorar la caché.
 

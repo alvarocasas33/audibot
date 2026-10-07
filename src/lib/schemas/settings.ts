@@ -1,15 +1,21 @@
 import { z } from "zod";
 
+export const EvidencePolicySchema = z.enum(["all", "failed"]);
+export type EvidencePolicy = z.infer<typeof EvidencePolicySchema>;
+
 const fields = {
   /** Conversations sent to the model in a single request (1 = one request per conversation). */
   conversationsPerRequest: z.int().min(1).max(10),
+  /** Which criteria carry transcript quotes: every evaluated one, or only failures. */
+  evidence: EvidencePolicySchema,
 };
 
-export const DEFAULT_SETTINGS = { conversationsPerRequest: 5 };
+export const DEFAULT_SETTINGS = { conversationsPerRequest: 5, evidence: "all" as EvidencePolicy };
 
 /** Full settings: missing fields fall back to defaults. */
 export const SettingsSchema = z.object({
   conversationsPerRequest: fields.conversationsPerRequest.default(DEFAULT_SETTINGS.conversationsPerRequest),
+  evidence: fields.evidence.default(DEFAULT_SETTINGS.evidence),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 

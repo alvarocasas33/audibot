@@ -30,6 +30,7 @@ export async function runBatchEvaluation(
       rubric: rubric.content,
       language: params.language,
       fresh: params.fresh,
+      evidence: settings.evidence,
     },
     settings.conversationsPerRequest,
   );
