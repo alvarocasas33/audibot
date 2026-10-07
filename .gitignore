@@ -42,3 +42,11 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# local evaluation outputs (results.json itself is a deliverable and is committed)
+results.*.json
+
+# coding-agent skills installed by the Neon integration (tooling, not app code)
+.agents/
+.claude/
+skills-lock.json
