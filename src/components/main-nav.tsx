@@ -7,6 +7,7 @@ const SECTIONS = [
   { href: "/reportes", label: "Reportes" },
   { href: "/rubricas", label: "Rúbricas" },
   { href: "/configuracion", label: "Configuración" },
+  { href: "/documentacion", label: "Documentación" },
 ];
 
 export function MainNav() {
