@@ -2,6 +2,8 @@
 
 Servicio que audita automáticamente las conversaciones de un agente de IA contra una **rúbrica de reglas de negocio**. Cada regla de cada conversación recibe `passed` / `failed` / `not_applicable`, una **severidad** cuando falla (`minor` / `severe`), una **explicación breve** y **citas textuales** de la transcripción como evidencia. Además genera un reporte agregado: nota global, cumplimiento por regla y fallas más frecuentes.
 
+La herramienta está pensada para consumirse como servicio, pero también a través de una interfaz sencilla en una URL desde donde personas no técnicas pueden generar nuevos reportes, rúbricas y ajustar algunos parámetros del funcionamiento. Fue concebida para funcionar multi-modelo, y así realizar las evaluaciones según sea conveniente en términos de costos y/o performance.
+
 Construido para la prueba técnica de Forward Deployed Engineer de Vozy, sobre el caso de **Lina**, agente de cobranza por voz de Banco Andino (ficticio).
 
 | | |
@@ -145,8 +147,8 @@ Regla general: **el LLM interpreta lenguaje; el código compara y decide.**
 - **Una llamada al LLM por grupo de conversaciones.** La salida es una lista de respuestas etiquetadas por sub-regla (salida estructurada con un esquema de tamaño fijo, que todos los proveedores aceptan); el código verifica que estén todas las sub-reglas de todas las conversaciones y, si falta alguna o una falla no cita evidencia, reintenta explicándole al modelo qué corregir. El tamaño del grupo es configurable (**Configuración**, por defecto 5): agrupar no ahorra tokens, ahorra **solicitudes**, que es lo que limita el tier gratuito. Si una llamada agrupada falla, sus conversaciones se reintentan de a una.
 - **Caché de evaluaciones.** El resultado se guarda con un hash de (conversación, contenido de la rúbrica, modelo, idioma, versión del prompt). Re-evaluar el mismo archivo es instantáneo y gratis; editar la rúbrica o el prompt invalida la caché automáticamente. `fresh=true` la ignora.
 - **Manejo de errores.** Reintentos que respetan el tiempo que pide el proveedor (*"retry in 22s"*); si la cuota diaria se agotó, falla rápido con un mensaje claro en lugar de esperar horas. Si el LLM no responde o responde mal, esa conversación vuelve con `status: "error"` y el resto del lote continúa. Toda respuesta de error es JSON (`{ error, details? }`); el servicio nunca devuelve un 500 sin manejar.
-- **Agnóstico de proveedor.** El modelo es un parámetro (`model`); agregar un proveedor es una línea en el registro de modelos. Gemini es el predeterminado porque tiene tier gratuito ("no debe requerir inversión").
-- **Seguridad.** La API exige una API key (`Bearer`), comparada en tiempo constante; si no hay keys configuradas, rechaza todo (falla cerrada). Las keys viven en variables de entorno de Vercel, nunca en el repositorio.
+- **Agnóstico de proveedor.** El modelo es un parámetro (`model`); agregar un proveedor es una línea en el registro de modelos. Gemini es el predeterminado porque tiene tier gratuito. También está conectado a Claude con un pequeño saldo de mi cuenta personal.
+- **Seguridad.** La API exige una API key (`Bearer`), comparada en tiempo constante; si no hay keys configuradas, rechaza todo (falla cerrada). Las keys viven en variables de entorno de Vercel.
 - **Rúbricas en base de datos.** Se pueden tener varias rúbricas por cliente o bot (convención de nombre `Cliente_Bot_NN`) y una predeterminada.
 
 ---
@@ -186,7 +188,8 @@ Uso medido en llamadas reales con la rúbrica `Banco_Andino_01` (24 sub-reglas),
 | Claude Haiku 4.5 | ~1.200 / ~1.350 | $1,00 / $5,00 | ≈ US$ 8 |
 | Claude Sonnet 5.5 | ~1.350 / ~1.500 | $2,00 / $10,00 | ≈ US$ 18 |
 
-- El costo lo domina la **salida** (razonamiento y explicación por sub-regla), no la transcripción. Explicaciones más cortas o evaluar solo reglas aplicables serían las primeras palancas de ahorro.
+- El costo lo domina la **salida** (razonamiento y explicación por sub-regla), no la transcripción. Explicaciones más cortas o evaluar solo reglas aplicables serían los primeros lugares donde miraría para poder bajar costos.
+- Al principio se pedía una justificación incluso para las reglas pasadas; lo pusimos como un parámetro configurable para ahorrar.
 - **En tier gratuito el costo es US$ 0**, limitado por solicitudes diarias: con grupos de 5, 1.000 conversaciones son ~200 solicitudes.
 - **Re-evaluaciones del mismo contenido cuestan US$ 0** (caché).
 - Infraestructura: Vercel Hobby y Neon Free, US$ 0.
