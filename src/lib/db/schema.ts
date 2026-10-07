@@ -1,6 +1,16 @@
 import { sql } from "drizzle-orm";
-import { boolean, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import type { ConversationReport } from "@/lib/schemas/report";
+import {
+  boolean,
+  integer,
+  jsonb,
+  pgTable,
+  real,
+  serial,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+import type { BatchReport, ConversationReport } from "@/lib/schemas/report";
 import type { RubricContent } from "@/lib/schemas/rubric";
 
 export const rubrics = pgTable(
@@ -21,6 +31,19 @@ export const rubrics = pgTable(
 );
 
 export type RubricRow = typeof rubrics.$inferSelect;
+
+/** Every batch evaluation (from the UI or the API) is stored as a report. */
+export const reports = pgTable("reports", {
+  id: text("id").primaryKey(),
+  rubricName: text("rubric_name").notNull(),
+  model: text("model").notNull(),
+  language: text("language").notNull(),
+  sourceName: text("source_name"),
+  globalScore: real("global_score"),
+  conversationCount: integer("conversation_count").notNull(),
+  report: jsonb("report").$type<BatchReport>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 /** Single-row key/value store for app settings (validated by SettingsSchema on read). */
 export const appSettings = pgTable("app_settings", {
