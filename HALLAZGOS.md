@@ -2,7 +2,7 @@
 
 **Alcance:** 20 llamadas del 22/09/2026, evaluadas contra las 10 reglas del agente (rúbrica `Banco_Andino_01`). Detalle por llamada en [`results.json`](./results.json).
 
-**Resumen:** nota global **84/100**, pero **12 de las 20 llamadas (60 %) tienen al menos una falla grave**. Lina sigue bien el guion cuando la conversación es simple (presentación, tono, cierre en la mayoría de los casos); falla cuando la llamada se sale del camino feliz. El patrón común es que **prioriza conseguir el compromiso de pago por encima de las políticas**.
+**Resumen:** cumplimiento de reglas **84 %** y nota ponderada por severidad **79,5/100**, pero **12 de las 20 llamadas (60 %) tienen al menos una falla grave**. Lina sigue bien el guion cuando la conversación es simple (presentación, tono, cierre en la mayoría de los casos); falla cuando la llamada se sale del camino feliz. El patrón común es que **prioriza conseguir el compromiso de pago por encima de las políticas**.
 
 ---
 
