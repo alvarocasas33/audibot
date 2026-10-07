@@ -4,8 +4,6 @@ Servicio que audita automáticamente las conversaciones de un agente de IA contr
 
 La herramienta está pensada para consumirse como servicio, pero también a través de una interfaz sencilla en una URL desde donde personas no técnicas pueden generar nuevos reportes, rúbricas y ajustar algunos parámetros del funcionamiento. Fue concebida para funcionar multi-modelo, y así realizar las evaluaciones según sea conveniente en términos de costos y/o performance.
 
-Construido para la prueba técnica de Forward Deployed Engineer de Vozy, sobre el caso de **Lina**, agente de cobranza por voz de Banco Andino (ficticio).
-
 | | |
 |---|---|
 | **Servicio** | https://audibot.vercel.app |
