@@ -15,11 +15,21 @@ function Card({ title, children, className = "" }: { title?: string; children: R
   );
 }
 
-function StatTile({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
+function StatTile({
+  label,
+  value,
+  hint,
+  valueClassName = "",
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  valueClassName?: string;
+}) {
   return (
     <div className="rounded-lg border border-line bg-surface p-5">
       <div className="text-xs uppercase tracking-wide text-muted">{label}</div>
-      <div className="mt-1 font-mono text-3xl font-semibold tabular-nums">{value}</div>
+      <div className={`mt-1 font-mono text-3xl font-semibold tabular-nums ${valueClassName}`}>{value}</div>
       {hint && <div className="mt-1 text-xs text-ink-2">{hint}</div>}
     </div>
   );
@@ -225,6 +235,7 @@ export function ReportView({ report }: { report: BatchReport }) {
         <StatTile label="Cumplimiento" value={formatScore(summary.globalScore)} hint="% de reglas aplicables que cumplen" />
         <StatTile
           label="Con fallas graves"
+          valueClassName={summary.severityDistribution.severe ? "text-critical" : ""}
           value={summary.severeFailureRate == null ? "—" : `${formatScore(summary.severeFailureRate)}% (${summary.severityDistribution.severe})`}
           hint={`De ${meta.evaluatedCount} conversaciones`}
         />
