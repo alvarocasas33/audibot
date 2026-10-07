@@ -73,5 +73,6 @@ describe("aggregate severeFailureRate", () => {
       ({ conversationId: severity, status: "ok", score: 100, weightedScore: 100, severity, rules: [] }) as never;
     const summary = aggregate([], [conv("none"), conv("minor"), conv("severe"), conv("severe")]);
     expect(summary.severeFailureRate).toBe(50);
+    expect(summary.minorFailureRate).toBe(25); // worst failure minor; severe ones not double-counted
   });
 });
