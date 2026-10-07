@@ -97,6 +97,7 @@ La rúbrica `Banco_Andino_01` divide las 10 reglas del cliente en **24 sub-regla
   - **Cumplimiento** = reglas que cumplen / reglas que aplican × 100. Responde "¿cuántas reglas siguió?".
   - **Nota ponderada** = 100 − 5 por cada regla con falla leve − 25 por cada regla con falla grave (mínimo 0; penalizaciones configurables en **Configuración**). Responde "¿qué tan grave fue?": con el mismo cumplimiento (85,7), una llamada que solo omitió el resumen de cierre obtiene 95 y una que informó un monto errado obtiene 75.
   - Las notas globales son el promedio de las conversaciones.
+- **% de conversaciones sin fallas graves**: la métrica más directa de riesgo para el cliente (una sola falla grave, como revelar la deuda a un tercero, ya es un incidente).
 
 ### Criterios
 

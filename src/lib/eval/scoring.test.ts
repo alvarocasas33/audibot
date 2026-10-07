@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RuleResult, SubRuleResult, Verdict } from "@/lib/schemas/report";
 import type { Rule, Severity } from "@/lib/schemas/rubric";
-import { buildRuleResult, combineVerdicts, scoreConversation, weightedScore } from "./scoring";
+import { aggregate, buildRuleResult, combineVerdicts, scoreConversation, weightedScore } from "./scoring";
 
 const rule: Rule = {
   id: "R1",
@@ -64,5 +64,14 @@ describe("weightedScore", () => {
   });
   it("is null when nothing applied", () => {
     expect(weightedScore([r("not_applicable")], penalties)).toBeNull();
+  });
+});
+
+describe("aggregate severeFreeRate", () => {
+  it("is the % of evaluated conversations without a severe failure", () => {
+    const conv = (severity: "none" | "minor" | "severe") =>
+      ({ conversationId: severity, status: "ok", score: 100, weightedScore: 100, severity, rules: [] }) as never;
+    const summary = aggregate([], [conv("none"), conv("minor"), conv("severe"), conv("severe")]);
+    expect(summary.severeFreeRate).toBe(50);
   });
 });

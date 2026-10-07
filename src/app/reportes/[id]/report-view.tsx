@@ -228,7 +228,11 @@ export function ReportView({ report }: { report: BatchReport }) {
           value={meta.evaluatedCount}
           hint={`${meta.conversationCount} en el archivo${meta.errorCount ? ` · ${meta.errorCount} con error` : ""}`}
         />
-        <StatTile label="Con fallas graves" value={summary.severityDistribution.severe} hint="Al menos una regla grave incumplida" />
+        <StatTile
+          label="Sin fallas graves"
+          value={summary.severeFreeRate == null ? "—" : `${formatScore(summary.severeFreeRate)}%`}
+          hint={`${meta.evaluatedCount - summary.severityDistribution.severe} de ${meta.evaluatedCount} conversaciones`}
+        />
         <StatTile
           label="Sin fallas / leves"
           value={`${summary.severityDistribution.none} / ${summary.severityDistribution.minor}`}
