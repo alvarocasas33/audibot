@@ -33,7 +33,8 @@ export default async function ReportsPage() {
               <tr>
                 <th className="px-4 py-3 font-medium">Rúbrica</th>
                 <th className="px-4 py-3 font-medium">Fecha</th>
-                <th className="px-4 py-3 text-right font-medium">Nota</th>
+                <th className="px-4 py-3 text-right font-medium">Nota ponderada</th>
+                <th className="px-4 py-3 text-right font-medium">Cumplimiento</th>
                 <th className="px-4 py-3 font-medium">Descargar</th>
                 <th className="px-4 py-3 font-medium">Abrir</th>
               </tr>
@@ -50,6 +51,9 @@ export default async function ReportsPage() {
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-ink-2">{formatDate(r.createdAt)}</td>
                   <td className="px-4 py-3 text-right font-mono text-base font-semibold tabular-nums">
+                    {formatScore(r.globalWeightedScore)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono tabular-nums text-ink-2">
                     {formatScore(r.globalScore)}
                   </td>
                   <td className="px-4 py-3">

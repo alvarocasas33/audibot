@@ -131,7 +131,11 @@ function ConversationDetail({ conversation }: { conversation: ConversationReport
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-6 text-sm">
         <span>
-          Nota <strong className="font-mono text-lg tabular-nums">{formatScore(conversation.score)}</strong>
+          Nota ponderada{" "}
+          <strong className="font-mono text-lg tabular-nums">{formatScore(conversation.weightedScore ?? null)}</strong>
+        </span>
+        <span>
+          Cumplimiento <strong className="font-mono tabular-nums">{formatScore(conversation.score)}</strong>
         </span>
         <span className="text-ink-2">
           {conversation.counts.passed} cumple · {conversation.counts.failed} no cumple ·{" "}
@@ -168,7 +172,8 @@ function ConversationTable({
         <thead className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
           <tr>
             <th className="py-2 pr-4 font-medium">Conversación</th>
-            <th className="py-2 pr-4 text-right font-medium">Nota</th>
+            <th className="py-2 pr-4 text-right font-medium">Ponderada</th>
+            <th className="py-2 pr-4 text-right font-medium">Cumplimiento</th>
             <th className="py-2 pr-4 font-medium">Severidad</th>
             <th className="py-2 font-medium">Reglas incumplidas</th>
           </tr>
@@ -177,8 +182,11 @@ function ConversationTable({
           {conversations.map((c) => (
             <tr key={c.conversationId} onClick={() => onSelect(c.conversationId)} className="cursor-pointer hover:bg-page">
               <td className="py-2 pr-4 font-mono font-medium text-accent">{c.conversationId}</td>
-              <td className="py-2 pr-4 text-right font-mono tabular-nums">
-                {c.status === "error" ? "error" : formatScore(c.score)}
+              <td className="py-2 pr-4 text-right font-mono font-semibold tabular-nums">
+                {c.status === "error" ? "error" : formatScore(c.weightedScore ?? null)}
+              </td>
+              <td className="py-2 pr-4 text-right font-mono tabular-nums text-ink-2">
+                {c.status === "error" ? "—" : formatScore(c.score)}
               </td>
               <td className="py-2 pr-4">
                 <SeverityBadge severity={c.severity} />
@@ -204,8 +212,17 @@ export function ReportView({ report }: { report: BatchReport }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Nota global" value={formatScore(summary.globalScore)} hint="Promedio de las conversaciones (0–100)" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatTile
+          label="Nota ponderada"
+          value={formatScore(summary.globalWeightedScore ?? null)}
+          hint={
+            meta.scoring
+              ? `100 − ${meta.scoring.minorPenalty} por falla leve − ${meta.scoring.severePenalty} por grave`
+              : "No disponible en este reporte"
+          }
+        />
+        <StatTile label="Cumplimiento" value={formatScore(summary.globalScore)} hint="% de reglas aplicables que cumplen" />
         <StatTile
           label="Conversaciones"
           value={meta.evaluatedCount}
@@ -266,7 +283,7 @@ export function ReportView({ report }: { report: BatchReport }) {
               <option value={ALL}>Todas</option>
               {conversations.map((c) => (
                 <option key={c.conversationId} value={c.conversationId}>
-                  {c.conversationId} — nota {c.status === "error" ? "error" : formatScore(c.score)}
+                  {c.conversationId} — nota {c.status === "error" ? "error" : formatScore(c.weightedScore ?? c.score)}
                 </option>
               ))}
             </select>

@@ -36,6 +36,21 @@ export function buildRuleResult(rule: Rule, subRules: SubRuleResult[]): RuleResu
   };
 }
 
+/**
+ * Severity-weighted score: starts at 100 and subtracts a penalty for each failed rule
+ * according to its severity, floored at 0. Null when no rule applied.
+ */
+export function weightedScore(
+  rules: RuleResult[],
+  penalties: { minorPenalty: number; severePenalty: number },
+): number | null {
+  if (!rules.some((r) => r.verdict !== "not_applicable")) return null;
+  const lost = rules
+    .filter((r) => r.verdict === "failed")
+    .reduce((sum, r) => sum + (r.severity === "severe" ? penalties.severePenalty : penalties.minorPenalty), 0);
+  return Math.max(0, 100 - lost);
+}
+
 export function scoreConversation(rules: RuleResult[]) {
   const counts = { passed: 0, failed: 0, notApplicable: 0 };
   for (const rule of rules) {
@@ -118,5 +133,10 @@ export function aggregate(
     )
     .slice(0, topN);
 
-  return { globalScore, severityDistribution, ruleCompliance, topFailures };
+  const weighted = evaluated.map((c) => c.weightedScore).filter((s): s is number => s !== null);
+  const globalWeightedScore = weighted.length
+    ? round1(weighted.reduce((a, b) => a + b, 0) / weighted.length)
+    : null;
+
+  return { globalScore, globalWeightedScore, severityDistribution, ruleCompliance, topFailures };
 }

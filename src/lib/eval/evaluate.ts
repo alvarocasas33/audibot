@@ -11,9 +11,9 @@ import type {
   SubRuleResult,
 } from "@/lib/schemas/report";
 import type { RubricContent, SubRule } from "@/lib/schemas/rubric";
-import type { EvidencePolicy } from "@/lib/schemas/settings";
+import { DEFAULT_SETTINGS, type EvidencePolicy, type Penalties } from "@/lib/schemas/settings";
 import { runCodeCheck } from "./code-checks";
-import { aggregate, buildRuleResult, scoreConversation } from "./scoring";
+import { aggregate, buildRuleResult, scoreConversation, weightedScore } from "./scoring";
 
 export interface EvaluationContext {
   model: LanguageModel;
@@ -25,6 +25,23 @@ export interface EvaluationContext {
   fresh?: boolean;
   /** Which sub-rules keep their transcript quotes in the output (default: all; the app setting defaults to failed). */
   evidence?: EvidencePolicy;
+  /** Severity penalties for the weighted score (default: the app's default settings). */
+  penalties?: Penalties;
+}
+
+const penaltiesOf = (ctx: EvaluationContext): Penalties =>
+  ctx.penalties ?? { minorPenalty: DEFAULT_SETTINGS.minorPenalty, severePenalty: DEFAULT_SETTINGS.severePenalty };
+
+/**
+ * Output-time settings, applied after the cache (so changing them never re-evaluates):
+ * the severity-weighted score and the evidence policy.
+ */
+function finalizeReport(report: ConversationReport, ctx: EvaluationContext): ConversationReport {
+  const scored = {
+    ...report,
+    weightedScore: report.status === "ok" ? weightedScore(report.rules, penaltiesOf(ctx)) : null,
+  };
+  return applyEvidencePolicy(scored, ctx.evidence);
 }
 
 /**
@@ -125,6 +142,7 @@ function okReport(
     durationMs,
     cached: false,
     usage: judged.usage,
+    weightedScore: null,
   };
 }
 
@@ -148,6 +166,7 @@ function errorReport(
     durationMs,
     cached: false,
     usage: null,
+    weightedScore: null,
   };
 }
 
@@ -238,7 +257,7 @@ export async function evaluateConversations(
       }),
     );
   });
-  return reports.map((report) => applyEvidencePolicy(report, ctx.evidence));
+  return reports.map((report) => finalizeReport(report, ctx));
 }
 
 export async function evaluateConversation(
@@ -269,6 +288,7 @@ export async function evaluateBatch(
       evaluatedCount: reports.length - errorCount,
       errorCount,
       cachedCount: reports.filter((r) => r.cached).length,
+      scoring: penaltiesOf(ctx),
       tokenUsage: reports
         .filter((r) => !r.cached && r.usage)
         .reduce(

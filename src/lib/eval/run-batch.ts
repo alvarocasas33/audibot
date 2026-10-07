@@ -31,6 +31,7 @@ export async function runBatchEvaluation(
       language: params.language,
       fresh: params.fresh,
       evidence: settings.evidence,
+      penalties: { minorPenalty: settings.minorPenalty, severePenalty: settings.severePenalty },
     },
     settings.conversationsPerRequest,
   );

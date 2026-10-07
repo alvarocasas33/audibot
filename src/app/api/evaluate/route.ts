@@ -23,6 +23,7 @@ export const POST = route(async (request) => {
     language: params.language,
     fresh: params.fresh,
     evidence: settings.evidence,
+    penalties: { minorPenalty: settings.minorPenalty, severePenalty: settings.severePenalty },
   });
   return NextResponse.json({ rubric: rubric.name, language: params.language, ...report });
 });

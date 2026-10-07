@@ -40,6 +40,7 @@ export const reports = pgTable("reports", {
   language: text("language").notNull(),
   sourceName: text("source_name"),
   globalScore: real("global_score"),
+  globalWeightedScore: real("global_weighted_score"),
   conversationCount: integer("conversation_count").notNull(),
   report: jsonb("report").$type<BatchReport>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

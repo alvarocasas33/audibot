@@ -40,7 +40,7 @@ curl -X POST "https://audibot.vercel.app/api/evaluate/batch" \
 | `GET /api/models` | Modelos disponibles |
 | `GET/POST /api/rubrics`, `GET/PUT/DELETE /api/rubrics/{name}` | Gestión de rúbricas |
 | `POST /api/rubrics/generate` | Propone una rúbrica a partir de un archivo (no la guarda) |
-| `GET/PATCH /api/settings` | Configuración: conversaciones por solicitud al LLM y citas en todos los criterios o solo en los que no cumplen |
+| `GET/PATCH /api/settings` | Configuración: conversaciones por solicitud al LLM, citas en todos los criterios o solo en los que no cumplen, y penalizaciones de la nota ponderada |
 
 Parámetros de evaluación (query): `rubric` (por defecto la predeterminada), `model` (por defecto `google/gemini-3.5-flash-lite`), `language` (`es` | `en`, por defecto `es`) y `fresh=true` para ignorar la caché.
 
@@ -93,7 +93,10 @@ La rúbrica `Banco_Andino_01` divide las 10 reglas del cliente en **24 sub-regla
 - **Regla = conjunción de sus sub-reglas.** Una regla **cumple** si ninguna sub-regla falla y al menos una cumple; **no cumple** si alguna sub-regla falla; **no aplica** si ninguna sub-regla aplica.
 - **"No aplica" explícito.** Las sub-reglas condicionales empiezan con "Si…" (p. ej. *"Si el cliente dice que ya pagó…"*). Si la situación no ocurre en la llamada, el resultado es `not_applicable`, **nunca** `passed`: así una regla que no se puso a prueba no infla el cumplimiento.
 - **Severidad definida en la rúbrica, no por el LLM.** Cada sub-regla tiene severidad fija; la severidad de una regla fallida es la peor de sus sub-reglas fallidas. Es predecible, auditable y ajustable por el cliente sin tocar prompts.
-- **Nota de la conversación** = reglas que cumplen / reglas que aplican × 100. La **nota global** es el promedio de las conversaciones.
+- **Dos notas por conversación**, ambas de 0 a 100:
+  - **Cumplimiento** = reglas que cumplen / reglas que aplican × 100. Responde "¿cuántas reglas siguió?".
+  - **Nota ponderada** = 100 − 5 por cada regla con falla leve − 25 por cada regla con falla grave (mínimo 0; penalizaciones configurables en **Configuración**). Responde "¿qué tan grave fue?": con el mismo cumplimiento (85,7), una llamada que solo omitió el resumen de cierre obtiene 95 y una que informó un monto errado obtiene 75.
+  - Las notas globales son el promedio de las conversaciones.
 
 ### Criterios
 

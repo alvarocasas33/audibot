@@ -7,13 +7,15 @@ import { saveSettings } from "./actions";
 export function SettingsForm({ initial }: { initial: Settings }) {
   const [perRequest, setPerRequest] = useState(initial.conversationsPerRequest);
   const [evidence, setEvidence] = useState<EvidencePolicy>(initial.evidence);
+  const [minorPenalty, setMinorPenalty] = useState(initial.minorPenalty);
+  const [severePenalty, setSeverePenalty] = useState(initial.severePenalty);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     startTransition(async () => {
-      const result = await saveSettings({ conversationsPerRequest: perRequest, evidence });
+      const result = await saveSettings({ conversationsPerRequest: perRequest, evidence, minorPenalty, severePenalty });
       setMessage(result.ok ? { ok: true, text: "Guardado." } : { ok: false, text: result.error ?? "Error" });
     });
   }
@@ -70,6 +72,40 @@ export function SettingsForm({ initial }: { initial: Settings }) {
         </label>
         <p className="text-xs text-ink-2">
           Se aplica al generar el reporte, sin volver a evaluar: las conversaciones ya evaluadas se reutilizan.
+        </p>
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Nota ponderada por severidad</legend>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <label className="flex items-center gap-2">
+            Falla leve: −
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={minorPenalty}
+              onChange={(e) => setMinorPenalty(Number(e.target.value))}
+              className="w-20 rounded-md border border-line bg-surface px-3 py-2 text-sm"
+            />
+            puntos
+          </label>
+          <label className="flex items-center gap-2">
+            Falla grave: −
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={severePenalty}
+              onChange={(e) => setSeverePenalty(Number(e.target.value))}
+              className="w-20 rounded-md border border-line bg-surface px-3 py-2 text-sm"
+            />
+            puntos
+          </label>
+        </div>
+        <p className="text-xs text-ink-2">
+          Cada conversación parte de 100 y pierde estos puntos por cada regla que no cumple, según su severidad (mínimo 0).
+          Se muestra junto al cumplimiento (% de reglas que cumplen). Se aplica al generar el reporte, sin volver a evaluar.
         </p>
       </fieldset>
 

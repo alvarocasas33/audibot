@@ -14,6 +14,7 @@ export async function saveReport(report: BatchReport, sourceName: string | null)
     language: report.meta.language,
     sourceName,
     globalScore: report.summary.globalScore,
+    globalWeightedScore: report.summary.globalWeightedScore,
     conversationCount: report.meta.conversationCount,
     report,
   });
@@ -29,6 +30,7 @@ export async function listReports() {
       language: reports.language,
       sourceName: reports.sourceName,
       globalScore: reports.globalScore,
+      globalWeightedScore: reports.globalWeightedScore,
       conversationCount: reports.conversationCount,
       createdAt: reports.createdAt,
     })

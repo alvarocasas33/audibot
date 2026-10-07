@@ -39,6 +39,7 @@ async function main() {
       language: (arg("language") ?? "es") as Language,
       fresh: process.argv.includes("--fresh"),
       evidence: settings.evidence,
+      penalties: { minorPenalty: settings.minorPenalty, severePenalty: settings.severePenalty },
     },
     perRequest,
   );

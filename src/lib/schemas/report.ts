@@ -49,6 +49,8 @@ export const ConversationReportSchema = z.object({
   status: z.enum(["ok", "error"]),
   /** passed / (passed + failed) rules × 100; null when nothing applied or on error. */
   score: z.number().min(0).max(100).nullable(),
+  /** 100 minus a penalty per failed rule by severity (see meta.scoring); null when score is null. */
+  weightedScore: z.number().min(0).max(100).nullable(),
   severity: ConversationSeveritySchema.nullable(),
   counts: z.object({
     passed: z.int(),
@@ -100,10 +102,14 @@ export const BatchReportSchema = z.object({
     cachedCount: z.int(),
     /** Tokens spent by this run (cached conversations cost nothing). */
     tokenUsage: TokenUsageSchema,
+    /** Penalties used for weightedScore. */
+    scoring: z.object({ minorPenalty: z.int(), severePenalty: z.int() }),
   }),
   summary: z.object({
     /** Mean of conversation scores (conversations with a score only). */
     globalScore: z.number().nullable(),
+    /** Mean of conversation weighted scores. */
+    globalWeightedScore: z.number().nullable(),
     severityDistribution: z.object({
       none: z.int(),
       minor: z.int(),

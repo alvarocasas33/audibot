@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RuleResult, SubRuleResult, Verdict } from "@/lib/schemas/report";
 import type { Rule, Severity } from "@/lib/schemas/rubric";
-import { buildRuleResult, combineVerdicts, scoreConversation } from "./scoring";
+import { buildRuleResult, combineVerdicts, scoreConversation, weightedScore } from "./scoring";
 
 const rule: Rule = {
   id: "R1",
@@ -47,5 +47,22 @@ describe("scoreConversation", () => {
   });
   it("returns a null score when nothing applied", () => {
     expect(scoreConversation([r("not_applicable")]).score).toBeNull();
+  });
+});
+
+describe("weightedScore", () => {
+  const r = (verdict: Verdict, severity: Severity | null = null) =>
+    ({ id: "R", text: "", verdict, severity, subRules: [] }) as RuleResult;
+  const penalties = { minorPenalty: 5, severePenalty: 25 };
+
+  it("subtracts the penalty of each failed rule by severity", () => {
+    expect(weightedScore([r("passed"), r("failed", "minor")], penalties)).toBe(95); // C13-like
+    expect(weightedScore([r("passed"), r("failed", "severe")], penalties)).toBe(75); // C11-like
+  });
+  it("never goes below 0", () => {
+    expect(weightedScore(Array.from({ length: 5 }, () => r("failed", "severe")), penalties)).toBe(0);
+  });
+  it("is null when nothing applied", () => {
+    expect(weightedScore([r("not_applicable")], penalties)).toBeNull();
   });
 });
