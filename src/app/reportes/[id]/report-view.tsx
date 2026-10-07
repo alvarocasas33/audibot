@@ -225,13 +225,13 @@ export function ReportView({ report }: { report: BatchReport }) {
         <StatTile label="Cumplimiento" value={formatScore(summary.globalScore)} hint="% de reglas aplicables que cumplen" />
         <StatTile
           label="Con fallas graves"
-          value={summary.severeFailureRate == null ? "—" : `${formatScore(summary.severeFailureRate)}%`}
-          hint={`${summary.severityDistribution.severe} de ${meta.evaluatedCount} conversaciones`}
+          value={summary.severeFailureRate == null ? "—" : `${formatScore(summary.severeFailureRate)}% (${summary.severityDistribution.severe})`}
+          hint={`De ${meta.evaluatedCount} conversaciones`}
         />
         <StatTile
           label="Con fallas leves"
-          value={summary.minorFailureRate == null ? "—" : `${formatScore(summary.minorFailureRate)}%`}
-          hint={`${summary.severityDistribution.minor} de ${meta.evaluatedCount} · solo leves, sin graves`}
+          value={summary.minorFailureRate == null ? "—" : `${formatScore(summary.minorFailureRate)}% (${summary.severityDistribution.minor})`}
+          hint={`De ${meta.evaluatedCount} · solo leves, sin graves`}
         />
         <StatTile
           label="Conversaciones"
