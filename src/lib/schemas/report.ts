@@ -37,6 +37,11 @@ export const RuleResultSchema = z.object({
 });
 export type RuleResult = z.infer<typeof RuleResultSchema>;
 
+export const TokenUsageSchema = z.object({
+  inputTokens: z.int(),
+  outputTokens: z.int(),
+});
+
 export const ConversationSeveritySchema = z.enum(["none", "minor", "severe"]);
 
 export const ConversationReportSchema = z.object({
@@ -57,6 +62,8 @@ export const ConversationReportSchema = z.object({
   durationMs: z.int(),
   /** True when served from the evaluation cache (same conversation, rubric, model and language). */
   cached: z.boolean(),
+  /** Tokens spent evaluating this conversation (its share of a grouped request); null if unknown. */
+  usage: TokenUsageSchema.nullable(),
 });
 export type ConversationReport = z.infer<typeof ConversationReportSchema>;
 
@@ -91,6 +98,8 @@ export const BatchReportSchema = z.object({
     evaluatedCount: z.int(),
     errorCount: z.int(),
     cachedCount: z.int(),
+    /** Tokens spent by this run (cached conversations cost nothing). */
+    tokenUsage: TokenUsageSchema,
   }),
   summary: z.object({
     /** Mean of conversation scores (conversations with a score only). */

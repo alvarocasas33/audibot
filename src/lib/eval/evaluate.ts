@@ -106,6 +106,7 @@ function okReport(
     model: ctx.modelId,
     durationMs,
     cached: false,
+    usage: judged.usage,
   };
 }
 
@@ -128,6 +129,7 @@ function errorReport(
     model: ctx.modelId,
     durationMs,
     cached: false,
+    usage: null,
   };
 }
 
@@ -179,7 +181,7 @@ async function mapWithConcurrency<T, R>(
 
 export function batchConcurrency(): number {
   const value = Number(process.env.EVAL_CONCURRENCY);
-  return Number.isInteger(value) && value > 0 ? value : 2;
+  return Number.isInteger(value) && value > 0 ? value : 4;
 }
 
 /**
@@ -198,7 +200,7 @@ export async function evaluateConversations(
   await Promise.all(
     conversations.map(async (_, i) => {
       const cached = ctx.fresh ? null : await readCachedReport(keys[i]);
-      if (cached) reports[i] = { ...cached, cached: true };
+      if (cached) reports[i] = { ...cached, cached: true, usage: cached.usage ?? null };
       else pending.push(i);
     }),
   );
@@ -249,6 +251,15 @@ export async function evaluateBatch(
       evaluatedCount: reports.length - errorCount,
       errorCount,
       cachedCount: reports.filter((r) => r.cached).length,
+      tokenUsage: reports
+        .filter((r) => !r.cached && r.usage)
+        .reduce(
+          (sum, r) => ({
+            inputTokens: sum.inputTokens + r.usage!.inputTokens,
+            outputTokens: sum.outputTokens + r.usage!.outputTokens,
+          }),
+          { inputTokens: 0, outputTokens: 0 },
+        ),
     },
     summary: aggregate(ctx.rubric.rules, reports),
     conversations: reports,

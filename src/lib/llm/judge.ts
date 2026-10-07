@@ -6,7 +6,7 @@ import type { RubricContent, SubRule } from "@/lib/schemas/rubric";
 import { QuotaExhaustedError, withRateLimitRetry } from "./retry";
 
 /** Bump when the prompt or answer schema changes, so cached evaluations are not reused. */
-export const JUDGE_VERSION = "2";
+export const JUDGE_VERSION = "4";
 
 export interface RawSubRuleAnswer {
   reasoning: string;
@@ -21,6 +21,13 @@ export interface JudgeResult {
   answers: Map<string, RawSubRuleAnswer>;
   warnings: string[];
   attempts: number;
+  /** This conversation's share of the tokens spent on its (possibly grouped) request, retries included. */
+  usage: TokenUsage;
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export class JudgeError extends Error {}
@@ -31,11 +38,12 @@ const ATTEMPT_TIMEOUT_MS = 120_000;
 const LANGUAGE_NAME: Record<Language, string> = { es: "Spanish", en: "English" };
 
 const SYSTEM_PROMPT = `You are a meticulous quality auditor for a voice AI agent deployed by a company.
-You audit ONE call transcript against a rubric made of sub-rules and return one answer per sub-rule.
+You audit call transcripts against a rubric made of sub-rules. For EACH call, return an entry in
+"calls" with its callId and exactly one answer per sub-rule key (subRuleId) — no key may be missing.
 
 There are two kinds of sub-rules:
 
-1. JUDGE sub-rules: decide a verdict.
+1. JUDGE sub-rules: decide a "verdict" (set "value" to null).
    - "passed": the situation the sub-rule covers happened and the agent complied.
    - "failed": the agent violated the sub-rule. Omissions count: if the sub-rule applies and the
      required behaviour never happened, it failed.
@@ -43,10 +51,13 @@ There are two kinds of sub-rules:
      NOT occur in this call. Never answer "passed" for a conditional sub-rule whose condition did not
      occur. Sub-rules without a condition always apply.
 
-2. EXTRACT sub-rules: do NOT judge. Extract the value the sub-rule describes, in the exact format
-   requested, or null if it does not appear. Code will compare it against the customer data.
+2. EXTRACT sub-rules: do NOT judge (set "verdict" to null). Put in "value" what the sub-rule
+   describes, in the exact format requested, or null if it does not appear. Code will compare it against the customer data.
    Convert spoken numbers and dates (e.g. "un millón doscientos mil" -> 1200000,
    "uno, tres, cinco, dos" -> 1352, "el sábado 26" -> the ISO date using the call date).
+   Extract ONLY what was literally said in the transcript. NEVER take or "correct" the value from
+   the customer data: mismatches between what was said and the customer data are exactly what is
+   being audited. Start "reasoning" by quoting the exact words said, then give the conversion.
 
 Evidence ("turns"): cite turn numbers from the transcript.
 - For "failed": ALWAYS cite at least one turn — the violating turn, or for an omission the agent
@@ -67,26 +78,57 @@ function answerKey(subRule: SubRule, index: number, used: Set<string>): string {
   return key;
 }
 
-function buildSchema(subRules: { key: string; subRule: SubRule }[]) {
-  const turns = z
-    .array(z.int())
-    .describe("Transcript turn numbers that support the answer");
-  const shape: Record<string, z.ZodType> = {};
-  for (const { key, subRule } of subRules) {
-    shape[key] =
-      subRule.method.type === "llm"
-        ? z.object({
-            reasoning: z.string(),
-            turns,
-            verdict: z.enum(["passed", "failed", "not_applicable"]),
-          })
-        : z.object({
-            reasoning: z.string(),
-            turns,
-            value: z.string().nullable().describe("Extracted value, or null if absent"),
-          });
+/**
+ * Fixed-size answer schema: an array of answers tagged by sub-rule key, not one property per
+ * sub-rule. Its grammar doesn't grow with the rubric (Anthropic rejects large compiled grammars);
+ * completeness is enforced in code instead (see readAnswers).
+ */
+function buildSchema(subRuleKeys: string[], callKeys: string[]) {
+  const answer = z.object({
+    subRuleId: z.enum(subRuleKeys as [string, ...string[]]),
+    reasoning: z.string(),
+    turns: z.array(z.int()).describe("Transcript turn numbers that support the answer"),
+    verdict: z
+      .enum(["passed", "failed", "not_applicable"])
+      .nullable()
+      .describe("JUDGE sub-rules only; null for EXTRACT"),
+    value: z.string().nullable().describe("EXTRACT sub-rules only: the extracted value, or null if absent"),
+  });
+  return z.object({
+    calls: z.array(z.object({ callId: z.enum(callKeys as [string, ...string[]]), answers: z.array(answer) })),
+  });
+}
+
+interface AnswerItem {
+  subRuleId: string;
+  reasoning: string;
+  turns: number[];
+  verdict: "passed" | "failed" | "not_applicable" | null;
+  value: string | null;
+}
+
+/** Maps one call's answers to sub-rule ids; returns the keys that are missing or incomplete. */
+function readAnswers(
+  items: AnswerItem[],
+  keyed: { key: string; subRule: SubRule }[],
+): { answers: Map<string, RawSubRuleAnswer>; missing: string[] } {
+  const byKey = new Map<string, AnswerItem>();
+  for (const item of items) if (!byKey.has(item.subRuleId)) byKey.set(item.subRuleId, item);
+  const answers = new Map<string, RawSubRuleAnswer>();
+  const missing: string[] = [];
+  for (const { key, subRule } of keyed) {
+    const item = byKey.get(key);
+    if (!item || (subRule.method.type === "llm" && !item.verdict)) {
+      missing.push(key);
+      continue;
+    }
+    answers.set(subRule.id, {
+      reasoning: item.reasoning,
+      turns: item.turns,
+      ...(subRule.method.type === "llm" ? { verdict: item.verdict! } : { value: item.value }),
+    });
   }
-  return z.object(shape);
+  return { answers, missing };
 }
 
 function formatTranscript(conversation: Conversation): string {
@@ -176,15 +218,18 @@ export async function judgeConversations(params: {
     .map((entry, i) => ({ ...entry, key: answerKey(entry.subRule, i, used) }));
   const group = conversations.map((conversation, i) => ({ key: `call_${i + 1}`, conversation }));
 
-  const perCall = buildSchema(keyed);
-  const schema = z.object(Object.fromEntries(group.map(({ key }) => [key, perCall])));
+  const schema = buildSchema(
+    keyed.map((k) => k.key),
+    group.map((g) => g.key),
+  );
   const prompt = buildPrompt(rubric, group, keyed, language);
   let lastError = "unknown error";
   let feedback = "";
+  const spent: TokenUsage = { inputTokens: 0, outputTokens: 0 };
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const { output } = await withRateLimitRetry(() =>
+      const { output, usage } = await withRateLimitRetry(() =>
         generateText({
           model,
           system: SYSTEM_PROMPT,
@@ -195,12 +240,17 @@ export async function judgeConversations(params: {
         }),
       );
 
-      const raw = output as Record<string, Record<string, RawSubRuleAnswer>>;
+      spent.inputTokens += usage.inputTokens ?? 0;
+      spent.outputTokens += usage.outputTokens ?? 0;
+
+      const { calls } = output as { calls: { callId: string; answers: AnswerItem[] }[] };
       const results = group.map(({ key, conversation }) => {
-        const answers = new Map<string, RawSubRuleAnswer>();
-        for (const entry of keyed) answers.set(entry.subRule.id, raw[key][entry.key]);
-        const problem = findProblem(answers, conversation.transcripcion.length);
-        return { key, answers, problem };
+        const items = calls.filter((c) => c.callId === key).flatMap((c) => c.answers);
+        const { answers, missing } = readAnswers(items, keyed);
+        const problem = missing.length
+          ? `missing or incomplete answers for ${missing.join(", ")}`
+          : findProblem(answers, conversation.transcripcion.length);
+        return { key, answers, missing, problem };
       });
 
       const problems = results.filter((r) => r.problem).map((r) => `${r.key}: ${r.problem}`);
@@ -209,10 +259,18 @@ export async function judgeConversations(params: {
         feedback = `\n\nYour previous answer was rejected (${lastError}). Fix it and answer again.`;
         continue;
       }
+      // Missing answers can't be scored; uncited evidence only becomes a warning.
+      if (results.some((r) => r.missing.length)) {
+        throw new JudgeError(`LLM evaluation incomplete: ${problems.join("; ")}`);
+      }
       return results.map(({ answers, problem }) => ({
         answers,
         warnings: problem ? [problem] : [],
         attempts: attempt,
+        usage: {
+          inputTokens: Math.round(spent.inputTokens / group.length),
+          outputTokens: Math.round(spent.outputTokens / group.length),
+        },
       }));
     } catch (error) {
       if (NoObjectGeneratedError.isInstance(error)) {

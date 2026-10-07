@@ -50,3 +50,4 @@ results.*.json
 .agents/
 .claude/
 skills-lock.json
+!.env.example

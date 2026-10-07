@@ -1,0 +1,41 @@
+{
+  "description": "Etiquetado manual (gold set): reglas que NO cumplen en cada conversación con la rúbrica Banco_Andino_01. Las reglas no listadas cumplen o no aplican.",
+  "rubric": "Banco_Andino_01",
+  "failedRules": {
+    "C01": [],
+    "C02": ["R2"],
+    "C03": ["R3", "R9"],
+    "C04": [],
+    "C05": ["R6"],
+    "C06": [],
+    "C07": ["R7", "R10"],
+    "C08": [],
+    "C09": ["R7", "R8", "R9", "R10"],
+    "C10": ["R5"],
+    "C11": ["R4"],
+    "C12": [],
+    "C13": ["R9"],
+    "C14": ["R10"],
+    "C15": [],
+    "C16": ["R1"],
+    "C17": ["R5"],
+    "C18": [],
+    "C19": ["R2", "R4", "R5", "R9"],
+    "C20": ["R2"]
+  },
+  "notes": {
+    "C02": "No pide los 4 dígitos antes de revelar la deuda.",
+    "C03": "Revela monto y producto a la esposa; no pide horario; cierre sin resumen.",
+    "C05": "Ofrece un 20% de descuento.",
+    "C07": "Ignora dos pedidos de hablar con un humano y presiona por una fecha.",
+    "C09": "Ignora 'ya pagué', menciona cobro jurídico, no registra el reclamo, cierre sin resumen.",
+    "C10": "Acepta pago para el 4 de octubre (12 días después de la llamada).",
+    "C11": "Informa 2.620.000 en lugar de 2.260.000.",
+    "C13": "Cierra con 'Listo.' sin resumen ni despedida.",
+    "C14": "Amenaza con centrales de riesgo y embargo.",
+    "C16": "No se presenta como Lina ni informa la grabación.",
+    "C17": "Registra un compromiso para el 21/09, anterior a la llamada.",
+    "C19": "No verifica identidad, informa fecha de vencimiento errada (21 vs 12), fecha de pago vaga, sin resumen.",
+    "C20": "Revela la deuda aunque los dígitos no coinciden (6295 vs 6259)."
+  }
+}

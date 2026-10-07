@@ -45,7 +45,8 @@ async function main() {
   await writeFile(out, JSON.stringify(report, null, 2));
   console.log(
     `Wrote ${out} — ${report.meta.evaluatedCount} ok (${report.meta.cachedCount} cached), ` +
-      `${report.meta.errorCount} errors, ${report.meta.durationMs} ms`,
+      `${report.meta.errorCount} errors, ${report.meta.durationMs} ms, ` +
+      `tokens in/out ${report.meta.tokenUsage.inputTokens}/${report.meta.tokenUsage.outputTokens}`,
   );
   for (const c of report.conversations) {
     const failed = c.rules
