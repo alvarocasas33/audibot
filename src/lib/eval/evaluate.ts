@@ -23,7 +23,7 @@ export interface EvaluationContext {
   language: Language;
   /** Skip the cache lookup and re-run the LLM (the new result is still cached). */
   fresh?: boolean;
-  /** Which sub-rules keep their transcript quotes in the output (default: all). */
+  /** Which sub-rules keep their transcript quotes in the output (default: all; the app setting defaults to failed). */
   evidence?: EvidencePolicy;
 }
 

@@ -10,7 +10,7 @@ const fields = {
   evidence: EvidencePolicySchema,
 };
 
-export const DEFAULT_SETTINGS = { conversationsPerRequest: 5, evidence: "all" as EvidencePolicy };
+export const DEFAULT_SETTINGS = { conversationsPerRequest: 5, evidence: "failed" as EvidencePolicy };
 
 /** Full settings: missing fields fall back to defaults. */
 export const SettingsSchema = z.object({
