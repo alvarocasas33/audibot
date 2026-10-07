@@ -151,3 +151,23 @@ export async function generateRubricDraft(params: {
 
   return { content: RubricContentSchema.parse(content), warnings };
 }
+
+/**
+ * Fallback when the LLM is unavailable: the file's rules, each with a single
+ * sub-rule that restates it, so the user can still finish the rubric by hand.
+ */
+export function rulesOnlyDraft(agentSpec: AgentSpec): RubricContent {
+  return RubricContentSchema.parse({
+    agent: {
+      name: agentSpec.nombre_agente,
+      company: agentSpec.empresa,
+      channel: agentSpec.canal,
+      objective: agentSpec.objetivo,
+    },
+    rules: parseRules(agentSpec.reglas).map((rule) => ({
+      id: rule.id,
+      text: rule.text,
+      subRules: [{ id: `${rule.id}.1`, description: rule.text, severity: "minor", method: { type: "llm" } }],
+    })),
+  });
+}
